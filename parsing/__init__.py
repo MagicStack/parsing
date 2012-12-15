@@ -1178,7 +1178,7 @@ the Parser class for parsing.
             d = module.__dict__
             for k in d:
                 v = d[k]
-                if type(v) is types.TypeType and type(v.__doc__) == str:
+                if isinstance(v, types.TypeType) and isinstance(v.__doc__, str):
                     dirtoks = v.__doc__.split(" ")
 
                     #===========================================================
@@ -1343,7 +1343,7 @@ the Parser class for parsing.
             d = nonterm.nontermType.__dict__
             for k in d:
                 v = d[k]
-                if type(v) is types.FunctionType and type(v.__doc__) == str:
+                if isinstance(v, types.FunctionType) and isinstance(v.__doc__, str):
                     dirtoks = v.__doc__.split(" ")
                     if dirtoks[0] == "%reduce":
                         rhs = []
