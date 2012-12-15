@@ -1,3 +1,6 @@
+Parsing
+=======
+
 The Parsing module implements an LR(1) parser generator, as well as the
 runtime support for using a generated parser, via the Lr and Glr parser
 drivers.  There is no special parser generator input file format, but the
@@ -13,7 +16,7 @@ The parsing tables are LR(1), but they are generated using a fast algorithm
 that avoids creating duplicate states that result when using the generic
 LR(1) algorithm.  Creation time and table size are on par with the LALR(1)
 algorithm.  However, LALR(1) can create reduce/reduce conflicts that don't
-exist in a true LR(1) parser.  For more information on the algorithm, see:
+exist in a true LR(1) parser.  For more information on the algorithm, see::
 
     A Practical General Method for Constructing LR(k) Parsers
     David Pager
@@ -33,28 +36,37 @@ allows multiple parser instances to exist simultaneously, without requiring
 multiple copies of the parsing tables.  There are two separate parser driver
 classes:
 
-  Lr : Standard Characteristic Finite State Machine (CFSM) driver, based on
-       unambiguous LR(1) parsing tables.  This driver is faster than the Glr
-       driver, but it cannot deal with all parsing tables that the Glr
-       driver can.
+Lr:
+    Standard Characteristic Finite State Machine (CFSM) driver, based on
+    unambiguous LR(1) parsing tables.  This driver is faster than the Glr
+    driver, but it cannot deal with all parsing tables that the Glr
+    driver can.
 
-  Glr : Generalized LR driver, capable of tracking multiple parse trees
-        simultaneously, if the %split precedence is used to mark ambiguous
-        actions.  This driver is closely based on Elkhound's design, which
-        is described in a technical report:
+Glr:
+    Generalized LR driver, capable of tracking multiple parse trees
+    simultaneously, if the %split precedence is used to mark ambiguous
+    actions.  This driver is closely based on Elkhound's design, which
+    is described in a technical report::
 
-            Elkhound: A Fast, Practical GLR Parser Generator
-            Scott McPeak
-            Report No. UCB/CSD-2-1214 (December 2002)
-            http://www.cs.berkeley.edu/~smcpeak/elkhound/
+        Elkhound: A Fast, Practical GLR Parser Generator
+        Scott McPeak
+        Report No. UCB/CSD-2-1214 (December 2002)
+        http://www.cs.berkeley.edu/~smcpeak/elkhound/
 
 Parser generator directives are embedded in docstrings, and must begin with
 a '%' character, followed immediately by one of several keywords:
 
-    Precedence : %fail %nonassoc %left %right %split
-         Token : %token
-  Non-terminal : %start %nonterm
-    Production : %reduce
+    Precedence:
+        ``%fail`` ``%nonassoc`` ``%left`` ``%right`` ``%split``
+
+    Token:
+        ``%token``
+
+    Non-terminal:
+        ``%start`` ``%nonterm``
+
+    Production:
+        ``%reduce``
 
 All of these directives are associated with classes except for %reduce.
 %reduce is associated with methods within non-terminal classes.  The Parsing
@@ -76,3 +88,7 @@ The Parsing module implements the following exception classes:
   * SpecError
   * SyntaxError
   * AttributeError
+
+Author: Jason Evans jasone@canonware.com
+
+Github repo: http://github.com/sprymix/parsing

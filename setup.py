@@ -7,6 +7,13 @@ if sys.version_info >= (3, 0):
     extra.update(use_2to3=True)
 
 
+f = open('README.rst', 'r')
+try:
+    extra['long_description'] = f.read()
+finally:
+    f.close()
+
+
 setup(
     name='parsing',
     version='1.4',
