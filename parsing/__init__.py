@@ -274,8 +274,14 @@ Following are some examples of how to specify precedence classes:
         return "[%%%s %s ={%s} <{%s}]" % (self.assoc, self.name, \
           ",".join(equiv), ",".join(domin))
 
-class SymbolSpec(object):
+class SymbolSpec(int):
     seq = 0
+
+    def __new__(cls, *args, **kwargs):
+        result = int.__new__(cls, SymbolSpec.seq)
+        result.seq = SymbolSpec.seq
+        SymbolSpec.seq += 1
+        return result
 
     def __init__(self, name, prec):
         assert type(name) == str
@@ -285,19 +291,9 @@ class SymbolSpec(object):
         self.firstSet = [] # Set.
         self.followSet = [] # Set.
 
-        # Used for ordering symbols and hashing.
-        self.seq = SymbolSpec.seq
-        SymbolSpec.seq += 1
-
     def __repr__(self):
         return "%s" % self.name
-
-    def __cmp__(self, other):
-        return cmp(self.seq, other.seq)
-
-    def __eq__(self, other):
-        assert isinstance(other, SymbolSpec)
-        return self.seq == other.seq
+    __str__ = __repr__
 
     def firstSetMerge(self, sym):
         if sym not in self.firstSet:
@@ -547,8 +543,14 @@ class EpsilonSpec(TokenSpec):
         TokenSpec.__init__(self, Epsilon, "<e>", "none")
 epsilon = EpsilonSpec()
 
-class Production(object):
+class Production(int):
     seq = 0
+
+    def __new__(cls, *args, **kwargs):
+        result = int.__new__(cls, Production.seq)
+        result.seq = Production.seq
+        Production.seq += 1
+        return result
 
     def __init__(self, method, qualified, prec, lhs, rhs):
         assert isinstance(prec, Precedence)
@@ -562,10 +564,6 @@ class Production(object):
         self.prec = prec
         self.lhs = lhs
         self.rhs = rhs
-
-        # Used for hashing.
-        self.seq = Production.seq
-        Production.seq += 1
 
     def __getstate__(self):
         return (self.qualified, self.prec, self.lhs, self.rhs, self.seq)
@@ -603,8 +601,8 @@ class Start(Production):
     def __init__(self, startSym, userStartSym):
         Production.__init__(self, none, startSym, userStartSym)
 
-class Item(object):
-    def __init__(self, production, dotPos, lookahead):
+class Item(int):
+    def __new__(cls, production, dotPos, lookahead):
         assert isinstance(production, Production)
         assert type(dotPos) == int
         assert dotPos >= 0
@@ -614,25 +612,13 @@ class Item(object):
             for elm in lookahead:
                 assert isinstance(elm, SymbolSpec)
 
-        self.production = production
-        self.dotPos = dotPos
-        self.lookahead = {}
-        for sym in lookahead:
-            self.lookahead[sym] = sym
-
-        self.hash = (dotPos * Production.seq) + production.seq
-
-    def __hash__(self):
-        return self.hash
-
-    def __eq__(self, other):
-        assert isinstance(other, Item)
-
-        return self.hash == other.hash
-
-    def __cmp__(self, other):
-        assert isinstance(other, Item)
-        return self.hash.__cmp__(other.hash)
+        hash = (dotPos * Production.seq) + production.seq
+        result = int.__new__(cls, hash)
+        result.hash = hash
+        result.production = production
+        result.dotPos = dotPos
+        result.lookahead = dict(zip(lookahead, lookahead))
+        return result
 
     def __repr__(self):
         strs = []
@@ -687,6 +673,9 @@ class Item(object):
                 return False
 
         return True
+
+    def __getnewargs__(self):
+        return (self.production, self.dotPos, list(self.lookahead.keys()))
 
 class ItemSet(dict):
     def __init__(self, args=[]):
