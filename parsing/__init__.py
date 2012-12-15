@@ -1339,6 +1339,7 @@ the Parser class for parsing.
                     dirtoks = v.__doc__.split(" ")
                     if dirtoks[0] == "%reduce":
                         rhs = []
+                        rhs_terms = []
                         prec = None
                         for i in xrange(1, len(dirtoks)):
                             tok = dirtoks[i]
@@ -1347,6 +1348,7 @@ the Parser class for parsing.
                                 # Symbolic reference.
                                 if tok in self._tokens:
                                     rhs.append(self._tokens[tok])
+                                    rhs_terms.append(self._tokens[tok])
                                 elif tok in self._nonterms:
                                     rhs.append(self._nonterms[tok])
                                 else:
@@ -1368,9 +1370,14 @@ the Parser class for parsing.
                                           + "specification: %s") % v.__doc__
                                     prec = self._precedences[m.group(1)]
 
-                        if prec == None:
+                        if prec is None:
                             # Inherit the non-terminal's precedence.
-                            prec = nonterm.prec
+                            if rhs_terms:
+                                # Inherit the precedence of the last terminal symbol in rhs
+                                prec = rhs_terms[-1].prec
+                            else:
+                                # Inherit the non-terminal's precedence.
+                                prec = nonterm.prec
 
                         prod = Production(v, "%s.%s" % (nonterm.qualified, k), \
                           prec, nonterm, rhs)
