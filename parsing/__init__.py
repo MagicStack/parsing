@@ -151,11 +151,6 @@ class AttributeError(Exception, exceptions.AttributeError):
 Attribute error, no different from the builtin exception, except that it
 also derives from Parsing.Exception.
 """
-    def __init__(self, str):
-        self._str = str
-
-    def __str__(self):
-        return self._str
 
 class SpecError(Exception):
     """
@@ -163,11 +158,6 @@ Specification error exception.  SpecError arises when the Spec
 introspection machinery detects an error either during docstring parsing
 or parser specification generation.
 """
-    def __init__(self, str):
-        self._str = str
-
-    def __str__(self):
-        return self._str
 
 class SyntaxError(Exception, exceptions.SyntaxError):
     """
@@ -175,11 +165,6 @@ Parser syntax error.  SyntaxError arises when a Parser instance detects
 a syntax error according to the Spec it is using, for the input being
 fed to it.
 """
-    def __init__(self, str):
-        self._str = str
-
-    def __str__(self):
-        return self._str
 
 #
 # End exceptions.
