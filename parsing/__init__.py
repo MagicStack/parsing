@@ -1995,6 +1995,7 @@ the Parser class for parsing.
                             itemSetC = self._itemSets[i]
                             if itemSetC.weakCompat(itemSetB):
                                 self._actionAppend(state, sym, ShiftAction(i))
+                                break
 
                     # Check if this is the start state.
                     if self._startState is None \
@@ -2021,6 +2022,7 @@ the Parser class for parsing.
                         if itemSetC.weakCompat(itemSetB):
                             assert nonterm not in state
                             state[nonterm] = i
+                            break
 
         if self._verbose:
             sys.stdout.write("\n")
