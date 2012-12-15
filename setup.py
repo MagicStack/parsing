@@ -33,7 +33,7 @@ setup(
         'Topic :: Software Development :: Compilers',
         'Topic :: Text Processing :: General'
     ],
-    packages=['parsing'],
+    packages=['parsing', 'parsing.tests', 'parsing.tests.specs'],
     test_suite='parsing.tests.test_basic',
     **extra
 )
