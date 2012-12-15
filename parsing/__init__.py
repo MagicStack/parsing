@@ -926,11 +926,11 @@ graphFile : The path of a file to store a graphviz representation
 verbose : If true, print progress information while generating the
           parsing tables.
 """
-        assert pickleFile == None or type(pickleFile) == str
+        assert pickleFile is None or type(pickleFile) == str
         assert pickleMode in ["rw", "r", "w"]
         assert type(skinny) == bool
-        assert logFile == None or type(logFile) == str
-        assert graphFile == None or type(graphFile) == str
+        assert logFile is None or type(logFile) == str
+        assert graphFile is None or type(graphFile) == str
         assert type(verbose) == bool
 
         self._skinny = skinny
@@ -1096,7 +1096,7 @@ the Parser class for parsing.
         # Augment grammar with a special start symbol and production:
         #
         #   <S> ::= S <$>.
-        assert self._startSym == None
+        assert self._startSym is None
         assert isinstance(self._userStartSym, NontermSpec)
         self._startSym = NontermSpec(NontermStart, "<S>",
           "%s.NontermStart" % __name__, self._none)
@@ -1253,7 +1253,7 @@ the Parser class for parsing.
                         if name in self._nonterms:
                             raise SpecError, \
                               "Identical nonterm/token names: %s" % v.__doc__
-                        if prec == None:
+                        if prec is None:
                             prec = "none"
                         token = TokenSpec(v, name, prec)
                         self._tokens[name] = token
@@ -1285,9 +1285,9 @@ the Parser class for parsing.
                                       "Invalid non-terminal specification: %s" \
                                       % v.__doc__
                             i += 1
-                        if name == None:
+                        if name is None:
                             name = k
-                        if prec == None:
+                        if prec is None:
                             prec = "none"
                         if name in self._precedences:
                             raise SpecError, \
@@ -1977,7 +1977,7 @@ the Parser class for parsing.
         assert len(self._itemSets) > 0
         assert len(self._action) == 0
         assert len(self._goto) == 0
-        assert self._startState == None
+        assert self._startState is None
         assert self._nConflicts == 0
 
         if self._verbose:
@@ -2009,7 +2009,7 @@ the Parser class for parsing.
                                 self._actionAppend(state, sym, ShiftAction(i))
 
                     # Check if this is the start state.
-                    if self._startState == None \
+                    if self._startState is None \
                       and item.production.lhs == self._startSym \
                       and item.dotPos == 0:
                         assert len(item.production.rhs) == 2
@@ -2333,7 +2333,7 @@ Signal end-of-input to the parser.
 
         # Python's method definition syntax makes returning self from %reduce
         # methods cumbersome, so translate None here.
-        if r == None:
+        if r is None:
             r = sym
 
         return r
@@ -2368,7 +2368,7 @@ class Gsse(object):
 class Gssn(object):
     """Graph-structured stack node."""
     def __init__(self, below, value, nextState):
-        assert isinstance(below, Gssn) or below == None
+        assert isinstance(below, Gssn) or below is None
 
         self._edges = []
         if below != None:
@@ -2402,14 +2402,14 @@ class Gssn(object):
     # <e>-grammars can cause cycles, which requires that we avoid infinite
     # recursion.
     def paths(self, pathLen=None):
-        assert ((type(pathLen) == int and pathLen >= 0) or pathLen == None)
+        assert ((type(pathLen) == int and pathLen >= 0) or pathLen is None)
 
         for path in self._pathsRecurse(pathLen, []):
             yield path
 
     def _pathsRecurse(self, pathLen, path):
         path.insert(0, self)
-        if pathLen == None and len(self._edges) == 0:
+        if pathLen is None and len(self._edges) == 0:
             yield path[:]
         elif pathLen != None and len(path) - 1 == pathLen * 2:
             yield path[:]
