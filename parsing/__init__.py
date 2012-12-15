@@ -22,6 +22,12 @@
 #
 # Release history:
 #
+# 1.4 (15 December 2012): Python 3 support.
+#
+#                         Performance optimizations & bug fixes.
+#
+#                         Published on PyPI.
+#
 # 1.3 (8 August 2007): Retroactively number public releases.
 #
 #                      Back-port to Python 2.4.
