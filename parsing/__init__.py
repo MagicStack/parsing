@@ -124,7 +124,6 @@ __all__ = ["Exception", "SpecError", "SyntaxError", "AttributeError",
            "Nonterm", "Parser", "Precedence", "Spec", "Token", "Lr", "Glr"]
 
 import cPickle
-import exceptions
 import re
 import sys
 import types
@@ -140,13 +139,13 @@ except NameError:
 # Begin exceptions.
 #
 
-class Exception(exceptions.Exception):
+class Exception(Exception):
     """
 Top level Parsing exception class, from which all other Parsing
 exception classes inherit.
 """
 
-class AttributeError(Exception, exceptions.AttributeError):
+class AttributeError(Exception, AttributeError):
     """
 Attribute error, no different from the builtin exception, except that it
 also derives from Parsing.Exception.
@@ -159,7 +158,7 @@ introspection machinery detects an error either during docstring parsing
 or parser specification generation.
 """
 
-class SyntaxError(Exception, exceptions.SyntaxError):
+class SyntaxError(Exception, SyntaxError):
     """
 Parser syntax error.  SyntaxError arises when a Parser instance detects
 a syntax error according to the Spec it is using, for the input being
@@ -1085,7 +1084,7 @@ the Parser class for parsing.
         assert isinstance(self._userStartSym, NontermSpec)
         self._startSym = NontermSpec(NontermStart, "<S>",
           "%s.NontermStart" % __name__, self._none)
-        self._startProd = Production(NontermStart.reduce.im_func,
+        self._startProd = Production(NontermStart.reduce,
                                      "%s.NontermStart.reduce" % __name__,
                                      self._none, self._startSym, \
                                      [self._userStartSym, eoi])
@@ -1479,7 +1478,7 @@ the Parser class for parsing.
             if self._verbose:
                 print "Parsing.Spec: Creating %s Spec pickle in %s..." % \
                   (("fat", "skinny")[self._skinny], file)
-            f = open(file, "w")
+            f = open(file, "wb")
             cPickle.dump(self, f, protocol=cPickle.HIGHEST_PROTOCOL)
             f.close()
 
@@ -1492,7 +1491,7 @@ the Parser class for parsing.
                   "Parsing.Spec: Attempting to use pickle from file \"%s\"..." \
                   % file
             try:
-                f = open(file, "r")
+                f = open(file, "rb")
             except IOError:
                 if self._verbose:
                     error = sys.exc_info()
