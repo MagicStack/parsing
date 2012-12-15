@@ -129,6 +129,13 @@ import re
 import sys
 import types
 
+try:
+    next
+except NameError:
+    # Python <= 2.5
+    def next(obj):
+        return obj.next()
+
 #===============================================================================
 # Begin exceptions.
 #
@@ -256,8 +263,8 @@ Following are some examples of how to specify precedence classes:
         self.assoc = assoc
         self.relationships = relationships # Raw relationships specification.
 
-        self.equiv = [self] # Set.  Precedences that have equivalent precedence.
-        self.dominators = [] # Set.  Precedences that have higher precedence.
+        self.equiv = set((self,)) # Set.  Precedences that have equivalent precedence.
+        self.dominators = set() # Set.  Precedences that have higher precedence.
 
     def __repr__(self):
         equiv = [prec.name for prec in self.equiv]
@@ -266,10 +273,6 @@ Following are some examples of how to specify precedence classes:
         domin.sort()
         return "[%%%s %s ={%s} <{%s}]" % (self.assoc, self.name, \
           ",".join(equiv), ",".join(domin))
-
-    # Important for pickling/unpickling.
-    def __eq__(self, other):
-        return self is other
 
 class SymbolSpec(object):
     seq = 0
@@ -1407,38 +1410,22 @@ the Parser class for parsing.
                 precB = self._precedences[precBName]
                 rel = precA.relationships[precBName]
                 if rel == "=":
-                    precA.equiv.append(precB)
+                    if precB not in precA.equiv:
+                        precA.equiv.add(precB)
+                        precA.equiv.update(precB.equiv)
+                        precB.equiv = precA.equiv
+                        precA.dominators.update(precB.dominators)
+                        precB.dominators = precA.dominators
                 elif rel == "<":
-                    if precB not in precA.dominators:
-                        precA.dominators.append(precB)
+                    precA.dominators.add(precB)
                 elif rel == ">":
-                    if precA not in precB.dominators:
-                        precB.dominators.append(precA)
+                    precB.dominators.add(precA)
                 else:
                     assert False
 
-        # Create equivalence classes for all Precedence classes.  Since the
-        # Precedence classes are equivalent, they also share dominator sets.
-        for precA in self._precedences.itervalues():
-            for precB in precA.equiv[:]:
-                if not precB.equiv is precA.equiv:
-                    # Merge the sets of equivalent Precedence classes.
-                    for prec in precB.equiv:
-                        if prec not in precA.equiv:
-                            precA.equiv.append(prec)
-                    # Share the equiv set.
-                    for prec in precA.equiv:
-                        prec.equiv = precA.equiv
-
-        # Use the equivalence classes to merge dominator sets and share them.
-        for precA in self._precedences.itervalues():
-            for precB in precA.equiv[1:]:
-                # Merge the sets of dominator Precedence classes.
-                for prec in precB.dominators:
-                    if prec not in precA.dominators:
-                        precA.dominators.append(prec)
-                # Share the dominator set.
-                precB.dominators = precA.dominators
+        equiv_classes = {}
+        for prec in self._precedences.itervalues():
+            equiv_classes[id(prec.equiv)] = next(iter(prec.equiv))
 
         # Write graphviz precedence graph to graphFile, if graphFile was
         # specified.
@@ -1470,23 +1457,22 @@ the Parser class for parsing.
         done = False
         while not done:
             done = True
-            for precA in self._precedences.itervalues():
-                if precA == precA.equiv[0]: # No need to do more than this.
-                    for precB in precA.dominators[:]:
-                        for precC in precB.equiv:
-                            if precC not in precA.dominators:
-                                precA.dominators.append(precC)
-                                done = False
-                        for precC in precB.dominators:
-                            for precD in precC.equiv:
-                                if precD not in precA.dominators:
-                                    precA.dominators.append(precD)
-                                    done = False
+            for precA in equiv_classes.itervalues():
+                for precB in precA.dominators.copy():
+                    diff = precB.equiv - precA.dominators
+                    if diff:
+                        precA.dominators.update(diff)
+                        done = False
+                    for precC in precB.dominators:
+                        diff = precC.equiv - precA.dominators
+                        if diff:
+                            precA.dominators.update(diff)
+                            done = False
 
         # Check for cycles in the graph.
         cycles = []
         for precA in self._precedences.itervalues():
-            for precB in [precA] + precA.equiv:
+            for precB in set((precA,)) | precA.equiv:
                 if precB in precA.dominators:
                     cycles.append( \
                       "Precedence relationship cycle involving '%s'" % \
