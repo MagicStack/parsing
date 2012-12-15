@@ -1155,6 +1155,10 @@ the Parser class for parsing.
             del self._tokens
             del self._productions
 
+    assoc_tok_re = re.compile(r'([<>=])([A-Za-z]\w*)')
+    token_re = re.compile(r'([A-Za-z]\w*)')
+    precedence_tok_re = re.compile(r'\[([A-Za-z]\w*)\]')
+
     # Introspect modules and find special parser declarations.  In order to be
     # a special class, the class must both 1) be subclassed from Token or
     # Nonterm, and 2) contain the appropriate %foo docstring.
@@ -1183,7 +1187,7 @@ the Parser class for parsing.
                         i = 1
                         while i < len(dirtoks):
                             tok = dirtoks[i]
-                            m = re.compile(r'([<>=])([A-Za-z]\w*)').match(tok)
+                            m = self.assoc_tok_re.match(tok)
                             if m:
                                 # Precedence relationship.
                                 if m.group(2) in relationships:
@@ -1193,7 +1197,7 @@ the Parser class for parsing.
                                       % v.__doc__
                                 relationships[m.group(2)] = m.group(1)
                             else:
-                                m = re.compile(r'([A-Za-z]\w*)').match(tok)
+                                m = self.token_re.match(tok)
                                 if m:
                                     if i != 1:
                                         raise SpecError, \
@@ -1228,7 +1232,7 @@ the Parser class for parsing.
                         i = 1
                         while i < len(dirtoks):
                             tok = dirtoks[i]
-                            m = re.compile(r'\[([A-Za-z]\w*)\]').match(tok)
+                            m = self.precedence_tok_re.match(tok)
                             if m:
                                 if i < len(dirtoks) - 1:
                                     raise SpecError, \
@@ -1236,7 +1240,7 @@ the Parser class for parsing.
                                       + "specification: %s") % v.__doc__
                                 prec = m.group(1)
                             else:
-                                m = re.compile(r'([A-Za-z]\w*)').match(tok)
+                                m = self.token_re.match(tok)
                                 if m:
                                     name = m.group(1)
                                 else:
@@ -1268,7 +1272,7 @@ the Parser class for parsing.
                         i = 1
                         while i < len(dirtoks):
                             tok = dirtoks[i]
-                            m = re.compile(r'\[([A-Za-z]\w*)\]').match(tok)
+                            m = self.precedence_tok_re.match(tok)
                             if m:
                                 if i < len(dirtoks) - 1:
                                     raise SpecError, \
@@ -1277,7 +1281,7 @@ the Parser class for parsing.
                                       v.__doc__
                                 prec = m.group(1)
                             else:
-                                m = re.compile(r'([A-Za-z]\w*)').match(tok)
+                                m = self.token_re.match(tok)
                                 if m:
                                     name = m.group(1)
                                 else:
@@ -1343,7 +1347,7 @@ the Parser class for parsing.
                         prec = None
                         for i in xrange(1, len(dirtoks)):
                             tok = dirtoks[i]
-                            m = re.compile(r'([A-Za-z]\w*)').match(tok)
+                            m = self.token_re.match(tok)
                             if m:
                                 # Symbolic reference.
                                 if tok in self._tokens:
@@ -1356,7 +1360,7 @@ the Parser class for parsing.
                                       ("Unknown symbol '%s' in reduction " \
                                       + "specification: %s") % (tok, v.__doc__)
                             else:
-                                m = re.compile(r'\[([A-Za-z]\w*)\]').match(tok)
+                                m = self.precedence_tok_re.match(tok)
                                 if m:
                                     # Precedence.
                                     if i < len(dirtoks) - 1:
