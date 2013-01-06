@@ -1403,9 +1403,12 @@ the Parser class for parsing.
                     if precB not in precA.equiv:
                         precA.equiv.add(precB)
                         precA.equiv.update(precB.equiv)
-                        precB.equiv = precA.equiv
                         precA.dominators.update(precB.dominators)
-                        precB.dominators = precA.dominators
+                        for precC in precB.equiv.copy():
+                            precC.equiv = precA.equiv
+                            precC.dominators = precA.dominators
+                        assert precB.equiv is precA.equiv
+                        assert precB.dominators is precA.dominators
                 elif rel == "<":
                     precA.dominators.add(precB)
                 elif rel == ">":
@@ -1432,14 +1435,15 @@ the Parser class for parsing.
               'fillcolor=gray, fontname=Helvetica, fontsize=10.0]')
             print >> f, '    edge [color=gray]'
             for precA in self._precedences.itervalues():
-                if precA == precA.equiv[0]:
+                if precA is next(iter(precA.equiv)):
                     print >> f, \
                       ('    Precedence_%s [label="{%s}"]') % (precA.name, \
                       "\\n".join(["%s (%s)" % (p.name, p.assoc) \
                       for p in precA.equiv]))
                     for precB in precA.dominators:
                         print >> f, '    Precedence_%s -> Precedence_%s' % \
-                          (precB.equiv[0].name, precA.equiv[0].name)
+                          (next(iter(precB.equiv)).name, \
+                          next(iter(precA.equiv)).name)
             print >> f, '}'
             f.close()
 
