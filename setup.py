@@ -16,7 +16,7 @@ finally:
 
 setup(
     name='parsing',
-    version='1.4',
+    version='1.4.1',
     url='http://www.canonware.com/Parsing/',
     license='MIT',
     author='Jason Evans',
