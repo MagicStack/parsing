@@ -1,4 +1,6 @@
-.. image:: https://travis-ci.org/sprymix/parsing.svg
+.. image:: https://travis-ci.org/sprymix/parsing.svg?branch=master
+    :target: https://travis-ci.org/sprymix/parsing
+
 
 Parsing
 =======
