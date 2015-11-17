@@ -129,10 +129,15 @@ The Parsing module implements the following exception classes:
 __all__ = ["Exception", "SpecError", "SyntaxError", "AttributeError",
            "Nonterm", "Parser", "Precedence", "Spec", "Token", "Lr", "Glr"]
 
-import cPickle
 import re
 import sys
 import types
+
+import six
+from six import print_
+from six.moves import range
+from six.moves import zip
+import six.moves.cPickle
 
 try:
     next
@@ -309,7 +314,7 @@ class String(list):
     def __cmp__(self, other):
         assert isinstance(other, String)
         minLen = min(len(self), len(other))
-        for i in xrange(minLen):
+        for i in range(minLen):
             if self[i] < other[i]:
                 return -1
             elif self[i] > other[i]:
@@ -326,7 +331,7 @@ class String(list):
 
     def __eq__(self, other):
         if len(self) == len(other):
-            for i in xrange(len(self)):
+            for i in range(len(self)):
                 if self[i] != other[i]:
                     return False
             return True
@@ -474,8 +479,8 @@ The alternative that is discarded is never touched by the parser
 again, so if any immediate cleanup is necessary, it should be done
 in merge().
 """
-        raise SyntaxError, "No merge() for %r; merging %r <--> %r" % \
-          (type(self), self, other)
+        raise SyntaxError("No merge() for %r; merging %r <--> %r" % \
+          (type(self), self, other))
 
 class Token(Symbol):
     """
@@ -607,7 +612,7 @@ class Item(int):
         result.hash = hash
         result.production = production
         result.dotPos = dotPos
-        result.lookahead = dict(zip(lookahead, lookahead))
+        result.lookahead = dict(list(zip(lookahead, lookahead)))
         return result
 
     def __repr__(self):
@@ -622,7 +627,7 @@ class Item(int):
         while i < len(self.production.rhs):
             strs.append(" %r" % self.production.rhs[i])
             i += 1
-        syms = [sym for sym in self.lookahead.iterkeys()]
+        syms = [sym for sym in six.iterkeys(self.lookahead)]
         syms.sort()
         strs.append("., %s] [%s]" % \
           ("/".join(["%r" % sym for sym in syms]), \
@@ -654,11 +659,11 @@ class Item(int):
         sLookahead = self.lookahead
         oLookahead = other.lookahead
 
-        for sSym in sLookahead.iterkeys():
+        for sSym in six.iterkeys(sLookahead):
             if sSym in oLookahead:
                 return False
 
-        for oSym in oLookahead.iterkeys():
+        for oSym in six.iterkeys(oLookahead):
             if oSym in sLookahead:
                 return False
 
@@ -673,9 +678,9 @@ class ItemSet(dict):
         self._added = {}
 
     def __repr__(self):
-        kernel = [item for item in self.iterkeys()]
+        kernel = [item for item in six.iterkeys(self)]
         kernel.sort()
-        added = [item for item in self._added.iterkeys()]
+        added = [item for item in six.iterkeys(self._added)]
         added.sort()
         return "ItemSet(kernel: %s, added: %r)" % \
           (", ".join(["%r" % item for item in kernel]), \
@@ -685,23 +690,23 @@ class ItemSet(dict):
         # This works because integers never overflow, and addition is
         # transitive.
         ret = 0
-        for item in self.iterkeys():
+        for item in six.iterkeys(self):
             ret += item.hash
         return ret
 
     def __eq__(self, other):
         if len(self) != len(other):
             return False
-        for sItem in self.iterkeys():
+        for sItem in six.iterkeys(self):
             if sItem not in other:
                 return False
         return True
 
     def __iter__(self):
-        for item in self.iterkeys():
+        for item in six.iterkeys(self):
             assert item.production.lhs.name == "<S>" or item.dotPos != 0
             yield item
-        for item in self._added.iterkeys():
+        for item in six.iterkeys(self._added):
             assert item.dotPos == 0
             assert item.production.lhs.name != "<S>"
             yield item
@@ -713,7 +718,7 @@ class ItemSet(dict):
         if item in self:
             self[item].lookahead.update(item.lookahead)
         else:
-            tItem = Item(item.production, item.dotPos, item.lookahead.keys())
+            tItem = Item(item.production, item.dotPos, list(item.lookahead.keys()))
             self[tItem] = tItem
 
     # Merge an added item.
@@ -741,7 +746,7 @@ class ItemSet(dict):
             dotPos = item.dotPos
             if dotPos < len(rhs) \
               and isinstance(rhs[dotPos], NontermSpec):
-                for lookahead in item.lookahead.keys():
+                for lookahead in list(item.lookahead.keys()):
                     string = StringSpec( \
                       String(rhs[dotPos+1:] + [lookahead]))
                     lhs = rhs[dotPos]
@@ -754,12 +759,12 @@ class ItemSet(dict):
     # Calculate and merge the kernel's transitive closure.
     def closure(self):
         items = []
-        for item in self.iterkeys():
+        for item in six.iterkeys(self):
             rhs = item.production.rhs
             dotPos = item.dotPos
             if dotPos < len(rhs) and isinstance(rhs[dotPos], \
               NontermSpec):
-                for lookahead in item.lookahead.iterkeys():
+                for lookahead in six.iterkeys(item.lookahead):
                     string = StringSpec(String(rhs[dotPos+1:] + \
                       [lookahead]))
                     lhs = rhs[dotPos]
@@ -776,7 +781,7 @@ class ItemSet(dict):
             rhs = item.production.rhs
             dotPos = item.dotPos
             if dotPos < len(rhs) and rhs[dotPos] == sym:
-                tItem = Item(item.production, dotPos + 1, item.lookahead.keys())
+                tItem = Item(item.production, dotPos + 1, list(item.lookahead.keys()))
                 ret.append(tItem)
         return ret
 
@@ -785,11 +790,11 @@ class ItemSet(dict):
     # computed its closure.
     def merge(self, other):
         items = []
-        for item in other.iterkeys():
+        for item in six.iterkeys(other):
             if item in self:
                 lookahead = self[item].lookahead
                 tLookahead = []
-                for sym in item.lookahead.iterkeys():
+                for sym in six.iterkeys(item.lookahead):
                     if sym not in lookahead:
                         lookahead[sym] = sym
                         tLookahead.append(sym)
@@ -798,7 +803,7 @@ class ItemSet(dict):
                     items.append(tItem)
             else:
                 tItem = Item(item.production, item.dotPos, \
-                  item.lookahead.keys())
+                  list(item.lookahead.keys()))
                 self[tItem] = tItem
                 items.append(tItem)
 
@@ -815,18 +820,18 @@ class ItemSet(dict):
         if len(self) != len(other):
             return False
         pairs = []
-        for sItem in self.iterkeys():
+        for sItem in six.iterkeys(self):
             if sItem not in other:
                 return False
             oItem = other[sItem]
             pairs.append((sItem, oItem))
 
         # Check for lookahead compatibility.
-        for i in xrange(len(pairs)-1):
+        for i in range(len(pairs)-1):
             iPair = pairs[i]
             isItem = iPair[0]
             ioItem = iPair[1]
-            for j in xrange(i+1, len(pairs)):
+            for j in range(i+1, len(pairs)):
                 jPair = pairs[j]
                 jsItem = jPair[0]
                 joItem = jPair[1]
@@ -985,14 +990,14 @@ verbose : If true, print progress information while generating the
 
         #=======================================================================
         lines.append("Precedences:")
-        deco = [(prec.name, prec) for prec in self._precedences.itervalues()]
+        deco = [(prec.name, prec) for prec in six.itervalues(self._precedences)]
         deco.sort()
         for elm in deco:
             prec = elm[1]
             lines.append("  %r" % prec)
 
         lines.append("Tokens:")
-        syms = [sym for sym in self._tokens.itervalues()]
+        syms = [sym for sym in six.itervalues(self._tokens)]
         syms.sort()
         for token in syms:
             lines.append("  %r %r" % (token, token.prec))
@@ -1000,7 +1005,7 @@ verbose : If true, print progress information while generating the
             lines.append("    Follow set: %r" % token.followSet)
 
         lines.append("Non-terminals:")
-        syms = [sym for sym in self._nonterms.itervalues()]
+        syms = [sym for sym in six.itervalues(self._nonterms)]
         syms.sort()
         for sym in syms:
             lines.append("  %r %r" % (sym, sym.prec))
@@ -1013,7 +1018,7 @@ verbose : If true, print progress information while generating the
                 lines.append("      %r" % prod)
 
         lines.append("Item sets:")
-        for i in xrange(len(self._itemSets)):
+        for i in range(len(self._itemSets)):
             lines.append("  %d: %r" % (i, self._itemSets[i]))
         #=======================================================================
 
@@ -1036,7 +1041,7 @@ verbose : If true, print progress information while generating the
         else:
             lines.append("Algorithm compatibility: None, due to ambiguity")
         lines.append("Parsing tables:")
-        for i in xrange(len(self._action)):
+        for i in range(len(self._action)):
             lines.append("  %s" % ("=" * 78))
             lines.append("  State %d:%s" % \
               (i, ("", " (start state)")[self._startState == i]))
@@ -1114,9 +1119,8 @@ the Parser class for parsing.
             # Just because the pickle was compatible does not mean that it is
             # valid for parsing.
             if self._nConflicts != 0:
-                raise SpecError, \
-                  "Compatible pickle is invalid due to conflicts (%d)" % \
-                  self._nConflicts
+                raise SpecError("Compatible pickle is invalid due to conflicts (%d)" % \
+                  self._nConflicts)
         if compat in ["itemsets", "incompatible"]:
             # Generate LR(1) parsing tables.
             self._lr()
@@ -1154,8 +1158,8 @@ the Parser class for parsing.
     # Nonterm, and 2) contain the appropriate %foo docstring.
     def _introspect(self, modules):
         if self._verbose:
-            print ("Parsing.Spec: Introspecting module%s to acquire formal" + \
-            " grammar specification...") % ("s", "")[len(modules) == 1]
+            print_(("Parsing.Spec: Introspecting module%s to acquire formal" + \
+            " grammar specification...") % ("s", "")[len(modules) == 1])
 
         self._precedences["none"] = self._none
         self._precedences["split"] = self._split
@@ -1164,7 +1168,7 @@ the Parser class for parsing.
             d = module.__dict__
             for k in d:
                 v = d[k]
-                if isinstance(v, types.TypeType) and isinstance(v.__doc__, str):
+                if isinstance(v, type) and isinstance(v.__doc__, str):
                     dirtoks = v.__doc__.split(" ")
 
                     #===========================================================
@@ -1181,36 +1185,30 @@ the Parser class for parsing.
                             if m:
                                 # Precedence relationship.
                                 if m.group(2) in relationships:
-                                    raise SpecError, \
-                                      ("Duplicate precedence " \
+                                    raise SpecError(("Duplicate precedence " \
                                       + "relationship: %s") \
-                                      % v.__doc__
+                                      % v.__doc__)
                                 relationships[m.group(2)] = m.group(1)
                             else:
                                 m = self.token_re.match(tok)
                                 if m:
                                     if i != 1:
-                                        raise SpecError, \
-                                          ("Precedence name must come before " \
+                                        raise SpecError(("Precedence name must come before " \
                                           + "relationships: %s") \
-                                          % v.__doc__
+                                          % v.__doc__)
                                     name = m.group(1)
                                 else:
-                                    raise SpecError, \
-                                      "Invalid precedence specification: %s" % \
-                                      v.__doc__
+                                    raise SpecError("Invalid precedence specification: %s" % \
+                                      v.__doc__)
                             i += 1
 
                         if name in self._precedences:
-                            raise SpecError, \
-                              "Duplicate precedence name: %s" % v.__doc__
+                            raise SpecError("Duplicate precedence name: %s" % v.__doc__)
                         if name in self._tokens:
-                            raise SpecError, \
-                              "Identical token/precedence names: %s" % v.__doc__
+                            raise SpecError("Identical token/precedence names: %s" % v.__doc__)
                         if name in self._nonterms:
-                            raise SpecError, \
-                              "Identical nonterm/precedence names: %s" % \
-                              v.__doc__
+                            raise SpecError("Identical nonterm/precedence names: %s" % \
+                              v.__doc__)
                         prec = Precedence(name, dirtoks[0][1:], relationships)
                         self._precedences[name] = prec
                     #===========================================================
@@ -1225,28 +1223,23 @@ the Parser class for parsing.
                             m = self.precedence_tok_re.match(tok)
                             if m:
                                 if i < len(dirtoks) - 1:
-                                    raise SpecError, \
-                                      ("Precedence must come last in token " \
-                                      + "specification: %s") % v.__doc__
+                                    raise SpecError(("Precedence must come last in token " \
+                                      + "specification: %s") % v.__doc__)
                                 prec = m.group(1)
                             else:
                                 m = self.token_re.match(tok)
                                 if m:
                                     name = m.group(1)
                                 else:
-                                    raise SpecError, \
-                                      "Invalid token specification: %s" % \
-                                      v.__doc__
+                                    raise SpecError("Invalid token specification: %s" % \
+                                      v.__doc__)
                             i += 1
                         if name in self._precedences:
-                            raise SpecError, \
-                              "Identical precedence/token names: %s" % v.__doc__
+                            raise SpecError("Identical precedence/token names: %s" % v.__doc__)
                         if name in self._tokens:
-                            raise SpecError, \
-                              "Duplicate token name: %s" % v.__doc__
+                            raise SpecError("Duplicate token name: %s" % v.__doc__)
                         if name in self._nonterms:
-                            raise SpecError, \
-                              "Identical nonterm/token names: %s" % v.__doc__
+                            raise SpecError("Identical nonterm/token names: %s" % v.__doc__)
                         if prec is None:
                             prec = "none"
                         token = TokenSpec(v, name, prec)
@@ -1265,34 +1258,29 @@ the Parser class for parsing.
                             m = self.precedence_tok_re.match(tok)
                             if m:
                                 if i < len(dirtoks) - 1:
-                                    raise SpecError, \
-                                      ("Precedence must come last in " \
+                                    raise SpecError(("Precedence must come last in " \
                                       + "non-terminal specification: %s") % \
-                                      v.__doc__
+                                      v.__doc__)
                                 prec = m.group(1)
                             else:
                                 m = self.token_re.match(tok)
                                 if m:
                                     name = m.group(1)
                                 else:
-                                    raise SpecError, \
-                                      "Invalid non-terminal specification: %s" \
-                                      % v.__doc__
+                                    raise SpecError("Invalid non-terminal specification: %s" \
+                                      % v.__doc__)
                             i += 1
                         if name is None:
                             name = k
                         if prec is None:
                             prec = "none"
                         if name in self._precedences:
-                            raise SpecError, \
-                              "Identical precedence/nonterm names: %s" % \
-                              v.__doc__
+                            raise SpecError("Identical precedence/nonterm names: %s" % \
+                              v.__doc__)
                         if name in self._tokens:
-                            raise SpecError, \
-                              "Identical token/nonterm names: %s" % v.__doc__
+                            raise SpecError("Identical token/nonterm names: %s" % v.__doc__)
                         if name in self._nonterms:
-                            raise SpecError, \
-                              "Duplicate nonterm name: %s" % v.__doc__
+                            raise SpecError("Duplicate nonterm name: %s" % v.__doc__)
                         nonterm = NontermSpec(v, name,
                           "%s.%s" % (module.__name__, name), prec)
                         self._nonterms[name] = nonterm
@@ -1301,13 +1289,12 @@ the Parser class for parsing.
                         if dirtoks[0] == "%start":
                             # Start symbol.
                             if self._userStartSym != None:
-                                raise SpecError, \
-                                  "Only one start non-terminal allowed: %s" \
-                                  % v.__doc__
+                                raise SpecError("Only one start non-terminal allowed: %s" \
+                                  % v.__doc__)
                             self._userStartSym = nonterm
                     #===========================================================
         if not isinstance(self._userStartSym, NontermSpec):
-            raise SpecError, "No start symbol specified"
+            raise SpecError("No start symbol specified")
 
     # Resolve all symbolic (named) references.
     def _references(self, logFile, graphFile):
@@ -1315,17 +1302,17 @@ the Parser class for parsing.
         self._resolvePrec(graphFile)
 
         # Resolve Token-->Precedence references.
-        for token in self._tokens.itervalues():
+        for token in six.itervalues(self._tokens):
             if type(token.prec) == str:
                 token.prec = self._precedences[token.prec]
 
         # Resolve Nonterm-->Precedence references.
-        for nonterm in self._nonterms.itervalues():
+        for nonterm in six.itervalues(self._nonterms):
             if type(nonterm.prec) == str:
                 nonterm.prec = self._precedences[nonterm.prec]
 
         # Resolve Nonterm-->{Nonterm,Token,Precedence} references.
-        for nonterm in self._nonterms.itervalues():
+        for nonterm in six.itervalues(self._nonterms):
             d = nonterm.nontermType.__dict__
             for k in d:
                 v = d[k]
@@ -1335,7 +1322,7 @@ the Parser class for parsing.
                         rhs = []
                         rhs_terms = []
                         prec = None
-                        for i in xrange(1, len(dirtoks)):
+                        for i in range(1, len(dirtoks)):
                             tok = dirtoks[i]
                             m = self.token_re.match(tok)
                             if m:
@@ -1346,22 +1333,19 @@ the Parser class for parsing.
                                 elif tok in self._nonterms:
                                     rhs.append(self._nonterms[tok])
                                 else:
-                                    raise SpecError, \
-                                      ("Unknown symbol '%s' in reduction " \
-                                      + "specification: %s") % (tok, v.__doc__)
+                                    raise SpecError(("Unknown symbol '%s' in reduction " \
+                                      + "specification: %s") % (tok, v.__doc__))
                             else:
                                 m = self.precedence_tok_re.match(tok)
                                 if m:
                                     # Precedence.
                                     if i < len(dirtoks) - 1:
-                                        raise SpecError, \
-                                          ("Precedence must come last in " \
+                                        raise SpecError(("Precedence must come last in " \
                                           + "reduction specification: %s") % \
-                                          v.__doc__
+                                          v.__doc__)
                                     if m.group(1) not in self._precedences:
-                                        raise SpecError, \
-                                          ("Unknown precedence in reduction " \
-                                          + "specification: %s") % v.__doc__
+                                        raise SpecError(("Unknown precedence in reduction " \
+                                          + "specification: %s") % v.__doc__)
                                     prec = self._precedences[m.group(1)]
 
                         if prec is None:
@@ -1382,21 +1366,19 @@ the Parser class for parsing.
             ntokens = len(self._tokens) - 1
             nnonterms = len(self._nonterms) - 1
             nproductions = len(self._productions) - 1
-            print \
-              "Parsing.Spec: %d token%s, %d non-terminal%s, %d production%s" % \
+            print_("Parsing.Spec: %d token%s, %d non-terminal%s, %d production%s" % \
               (ntokens, ("s", "")[ntokens == 1], \
               nnonterms, ("s", "")[nnonterms == 1], \
-              nproductions, ("s", "")[nproductions == 1])
+              nproductions, ("s", "")[nproductions == 1]))
 
     # Build the graph of Precedence relationships.
     def _resolvePrec(self, graphFile):
         # Resolve symbolic references and populate equiv/dominators.
-        for precA in self._precedences.itervalues():
+        for precA in six.itervalues(self._precedences):
             for precBName in precA.relationships:
                 if precBName not in self._precedences:
-                    raise SpecError, \
-                      ("Precedence '%s' specifies a relationship with " + \
-                      "unknown Precedence '%s'") % (precA, precBName)
+                    raise SpecError(("Precedence '%s' specifies a relationship with " + \
+                      "unknown Precedence '%s'") % (precA, precBName))
                 precB = self._precedences[precBName]
                 rel = precA.relationships[precBName]
                 if rel == "=":
@@ -1417,7 +1399,7 @@ the Parser class for parsing.
                     assert False
 
         equiv_classes = {}
-        for prec in self._precedences.itervalues():
+        for prec in six.itervalues(self._precedences):
             equiv_classes[id(prec.equiv)] = next(iter(prec.equiv))
 
         # Write graphviz precedence graph to graphFile, if graphFile was
@@ -1425,33 +1407,30 @@ the Parser class for parsing.
         if graphFile != None:
             f = open(graphFile, "w+")
             if self._verbose:
-                print \
-                  "Parsing.Spec: Writing graphviz precedence graph to '%s'..." \
-                  % graphFile
-            print >> f, 'digraph Precedence {'
-            print >> f, '    graph [bgcolor=black, labeljust="l"]'
-            print >> f, \
-              ('    node [shape=record, style=filled, color=black, ' + \
-              'fillcolor=gray, fontname=Helvetica, fontsize=10.0]')
-            print >> f, '    edge [color=gray]'
-            for precA in self._precedences.itervalues():
+                print_("Parsing.Spec: Writing graphviz precedence graph to '%s'..." \
+                  % graphFile)
+            print_('digraph Precedence {', file=f)
+            print_('    graph [bgcolor=black, labeljust="l"]', file=f)
+            print_(('    node [shape=record, style=filled, color=black, ' + \
+              'fillcolor=gray, fontname=Helvetica, fontsize=10.0]'), file=f)
+            print_('    edge [color=gray]', file=f)
+            for precA in six.itervalues(self._precedences):
                 if precA is next(iter(precA.equiv)):
-                    print >> f, \
-                      ('    Precedence_%s [label="{%s}"]') % (precA.name, \
+                    print_(('    Precedence_%s [label="{%s}"]') % (precA.name, \
                       "\\n".join(["%s (%s)" % (p.name, p.assoc) \
-                      for p in precA.equiv]))
+                      for p in precA.equiv])), file=f)
                     for precB in precA.dominators:
-                        print >> f, '    Precedence_%s -> Precedence_%s' % \
+                        print_('    Precedence_%s -> Precedence_%s' % \
                           (next(iter(precB.equiv)).name, \
-                          next(iter(precA.equiv)).name)
-            print >> f, '}'
+                          next(iter(precA.equiv)).name), file=f)
+            print_('}', file=f)
             f.close()
 
         # Iteratively build dominator sets until no more work can be done.
         done = False
         while not done:
             done = True
-            for precA in equiv_classes.itervalues():
+            for precA in six.itervalues(equiv_classes):
                 for precB in precA.dominators.copy():
                     diff = precB.equiv - precA.dominators
                     if diff:
@@ -1465,14 +1444,14 @@ the Parser class for parsing.
 
         # Check for cycles in the graph.
         cycles = []
-        for precA in self._precedences.itervalues():
+        for precA in six.itervalues(self._precedences):
             for precB in set((precA,)) | precA.equiv:
                 if precB in precA.dominators:
                     cycles.append( \
                       "Precedence relationship cycle involving '%s'" % \
                       precA.name)
         if len(cycles) > 0:
-            raise SpecError, "\n".join(cycles)
+            raise SpecError("\n".join(cycles))
 
     # Store state to a pickle file, if requested.
     def _pickle(self, file, mode):
@@ -1486,10 +1465,10 @@ the Parser class for parsing.
 
         if file != None and "w" in mode:
             if self._verbose:
-                print "Parsing.Spec: Creating %s Spec pickle in %s..." % \
-                  (("fat", "skinny")[self._skinny], file)
+                print_("Parsing.Spec: Creating %s Spec pickle in %s..." % \
+                  (("fat", "skinny")[self._skinny], file))
             f = open(file, "wb")
-            cPickle.dump(self, f, protocol=cPickle.HIGHEST_PROTOCOL)
+            six.moves.cPickle.dump(self, f, protocol=six.moves.cPickle.HIGHEST_PROTOCOL)
             f.close()
 
     # Restore state from a pickle file, if a compatible one is provided.  This
@@ -1497,40 +1476,38 @@ the Parser class for parsing.
     def _unpickle(self, file, mode):
         if file != None and "r" in mode:
             if self._verbose:
-                print \
-                  "Parsing.Spec: Attempting to use pickle from file \"%s\"..." \
-                  % file
+                print_("Parsing.Spec: Attempting to use pickle from file \"%s\"..." \
+                  % file)
             try:
                 f = open(file, "rb")
             except IOError:
                 if self._verbose:
                     error = sys.exc_info()
-                    print "Parsing.Spec: Pickle open failed: Exception %s: %s" \
-                      % (error[0], error[1])
+                    print_("Parsing.Spec: Pickle open failed: Exception %s: %s" \
+                      % (error[0], error[1]))
                 return "incompatible"
 
             # Any exception at all in unpickling can be assumed to be due to
             # an incompatible pickle.
             try:
-                spec = cPickle.load(f)
+                spec = six.moves.cPickle.load(f)
             except:
                 if self._verbose:
                     error = sys.exc_info()
-                    print "Parsing.Spec: Pickle load failed: Exception %s: %s" \
-                      % (error[0], error[1])
+                    print_("Parsing.Spec: Pickle load failed: Exception %s: %s" \
+                      % (error[0], error[1]))
                 return "incompatible"
 
             compat = self._compatible(spec)
             if compat == "incompatible":
                 if self._verbose:
-                    print "Parsing.Spec: Pickle in \"%s\" is incompatible." % \
-                      file
+                    print_("Parsing.Spec: Pickle in \"%s\" is incompatible." % \
+                      file)
                 return compat
 
             if self._verbose:
-                print \
-                  "Parsing.Spec: Using %s pickle in \"%s\" (%s)..." \
-                  % (("fat", "skinny")[spec._skinny], file, compat)
+                print_("Parsing.Spec: Using %s pickle in \"%s\" (%s)..." \
+                  % (("fat", "skinny")[spec._skinny], file, compat))
 
             if compat in ["compatible", "repickle"]:
                 # Copy spec's data structures.
@@ -1615,13 +1592,13 @@ the Parser class for parsing.
         # Precedences.
         if len(self._precedences) != len(other._precedences):
             if self._verbose:
-                print "Parsing.Spec: Unequal number of precedences (%d vs %d)" \
-                  % (len(self._precedences), len(other._precedences))
+                print_("Parsing.Spec: Unequal number of precedences (%d vs %d)" \
+                  % (len(self._precedences), len(other._precedences)))
             ret = "itemsets"
         for key in self._precedences:
             if key not in other._precedences:
                 if self._verbose:
-                    print "Parsing.Spec: Missing precedence: %s" % key
+                    print_("Parsing.Spec: Missing precedence: %s" % key)
                 ret = "itemsets"
                 continue
             precA = self._precedences[key]
@@ -1630,8 +1607,8 @@ the Parser class for parsing.
               or precA.assoc != precB.assoc \
               or len(precA.relationships) != len(precB.relationships):
                 if self._verbose:
-                    print "Parsing.Spec: Incompatible precedences: %r vs. %r" \
-                      % (precA, precB)
+                    print_("Parsing.Spec: Incompatible precedences: %r vs. %r" \
+                      % (precA, precB))
                 ret = "itemsets"
                 continue
             for prec in precA.relationships:
@@ -1639,23 +1616,21 @@ the Parser class for parsing.
                 if prec not in precB.relationships \
                   or precB.relationships[prec] != rel:
                     if self._verbose:
-                        print \
-                          "Parsing.Spec: Incompatible precedences: %r vs. %r" \
-                          % (precA, precB)
+                        print_("Parsing.Spec: Incompatible precedences: %r vs. %r" \
+                          % (precA, precB))
                     ret = "itemsets"
                     break
 
         # Nonterminals.
         if len(self._nonterms) != len(other._nonterms):
             if self._verbose:
-                print \
-                  "Parsing.Spec: Unequal number of non-terminals (%d vs %d)" \
-                  % (len(self._nonterms), len(other._nonterms))
+                print_("Parsing.Spec: Unequal number of non-terminals (%d vs %d)" \
+                  % (len(self._nonterms), len(other._nonterms)))
             return "incompatible"
         for key in self._nonterms:
             if key not in other._nonterms:
                 if self._verbose:
-                    print "Parsing.Spec: Missing non-terminal: %s" % key
+                    print_("Parsing.Spec: Missing non-terminal: %s" % key)
                 return "incompatible"
             nontermA = self._nonterms[key]
             nontermB = other._nonterms[key]
@@ -1663,24 +1638,21 @@ the Parser class for parsing.
               or nontermA.qualified != nontermB.qualified \
               or nontermA.nontermType != nontermB.nontermType:
                 if self._verbose:
-                    print \
-                      "Parsing.Spec: Incompatible non-terminals: %r vs. %r" \
-                      % (nontermA, nontermB)
+                    print_("Parsing.Spec: Incompatible non-terminals: %r vs. %r" \
+                      % (nontermA, nontermB))
                 return "incompatible"
             if nontermA.prec.name != nontermB.prec.name:
                 if self._verbose:
-                    print \
-                      ("Parsing.Spec: Differing precedences for " + \
-                      "non-terminal: %r") % nontermA
+                    print_(("Parsing.Spec: Differing precedences for " + \
+                      "non-terminal: %r") % nontermA)
                 ret = "itemsets"
 
             # Productions.
             if len(nontermA.productions) != len(nontermB.productions):
                 if self._verbose:
-                    print \
-                      "Parsing.Spec: Unequal number of productions (%d vs %d)" \
+                    print_("Parsing.Spec: Unequal number of productions (%d vs %d)" \
                       % (len(self._productions) - 1, \
-                      len(other._productions) - 1)
+                      len(other._productions) - 1))
                 return "incompatible"
             for prodA in nontermA.productions:
                 match = False
@@ -1689,20 +1661,18 @@ the Parser class for parsing.
                       and prodA.lhs.name == prodB.lhs.name \
                       and len(prodA.rhs) == len(prodB.rhs):
                         match = True
-                        for i in xrange(len(prodA.rhs)):
+                        for i in range(len(prodA.rhs)):
                             if prodA.rhs[i].name != prodB.rhs[i].name:
                                 match = False
                                 if self._verbose:
-                                    print \
-                                      ("Parsing.Spec: Incompatible" + \
+                                    print_(("Parsing.Spec: Incompatible" + \
                                       " productions: %r vs. %r") \
-                                      % (prodA, prodB)
+                                      % (prodA, prodB))
                                 break
                         if prodA.prec.name != prodB.prec.name:
                             if self._verbose:
-                                print \
-                                  ("Parsing.Spec: Differing precedences " + \
-                                  "for production: %r") % prodA
+                                print_(("Parsing.Spec: Differing precedences " + \
+                                  "for production: %r") % prodA)
                             ret = "itemsets"
                 if not match:
                     return "incompatible"
@@ -1710,35 +1680,33 @@ the Parser class for parsing.
         # Tokens.
         if len(self._tokens) != len(other._tokens):
             if self._verbose:
-                print "Parsing.Spec: Unequal number of tokens (%d vs %d)" \
-                  % (len(self._tokens), len(other._tokens))
+                print_("Parsing.Spec: Unequal number of tokens (%d vs %d)" \
+                  % (len(self._tokens), len(other._tokens)))
             return "incompatible"
         for key in self._tokens:
             if key not in other._tokens:
                 if self._verbose:
-                    print "Parsing.Spec: Missing token: %s" % key
+                    print_("Parsing.Spec: Missing token: %s" % key)
                 return "incompatible"
             tokenA = self._tokens[key]
             tokenB = other._tokens[key]
             if tokenA.name != tokenB.name \
               or tokenA.tokenType != tokenB.tokenType:
                 if self._verbose:
-                    print \
-                      "Parsing.Spec: Incompatible tokens: %r vs. %r" \
-                      % (tokenA, tokenB)
+                    print_("Parsing.Spec: Incompatible tokens: %r vs. %r" \
+                      % (tokenA, tokenB))
                 return "incompatible"
             if tokenA.prec.name != tokenB.prec.name:
                 if self._verbose:
-                    print \
-                      "Parsing.Spec: Differing precedences for token: %r" \
-                      % tokenA
+                    print_("Parsing.Spec: Differing precedences for token: %r" \
+                      % tokenA)
                 ret = "itemsets"
 
         # User start symbol.
         if self._userStartSym.name != other._userStartSym.name:
             if self._verbose:
-                print "Parsing.Spec: Differing start symbols: %s vs. %s" \
-                  % (self._userStartSym.name, other._userStartSym.name)
+                print_("Parsing.Spec: Differing start symbols: %s vs. %s" \
+                  % (self._userStartSym.name, other._userStartSym.name))
             return "incompatible"
 
         if other._skinny and ret == "itemsets":
@@ -1750,7 +1718,7 @@ the Parser class for parsing.
     # throw a SpecError if any ambiguities exist in the grammar.
     def _validate(self, logFile):
         if self._verbose:
-            print "Parsing.Spec: Validating grammar..."
+            print_("Parsing.Spec: Validating grammar...")
 
         lines = []
         if self._nConflicts > 0:
@@ -1770,7 +1738,7 @@ the Parser class for parsing.
                     used[sym.name] = sym
                     used[sym.prec.name] = sym.prec
 
-                for token in item.lookahead.iterkeys():
+                for token in six.iterkeys(item.lookahead):
                     used[token.prec.name] = token.prec
 
         nUnused = 0
@@ -1814,13 +1782,13 @@ the Parser class for parsing.
         if logFile != None:
             f = open(logFile, "w+")
             if self._verbose:
-                print "Parsing.Spec: Writing log to '%s'..." % logFile
+                print_("Parsing.Spec: Writing log to '%s'..." % logFile)
             f.write("%s" % "\n".join(lines + ["%r" % self]))
             f.close()
 
         # Conflicts are fatal.
         if self._nConflicts > 0:
-            raise SpecError, ("%s" % ("\n".join(lines)))
+            raise SpecError("%s" % ("\n".join(lines)))
 
         # Make sure to let the user know about unused symbols if verbosity is
         # enabled, and there weren't any conflicts to cause notification via an
@@ -1840,7 +1808,7 @@ the Parser class for parsing.
     def _firstSets(self):
         # Terminals.
         # first(X) is X for terminals.
-        for sym in self._tokens.itervalues():
+        for sym in six.itervalues(self._tokens):
             sym.firstSetMerge(sym)
 
         # Non-terminals.
@@ -1884,8 +1852,8 @@ the Parser class for parsing.
                 sym = self._nonterms[name]
                 for prod in sym.productions:
                     # For all A ::= aBb, merge first(b) into follow(B).
-                    for i in xrange(len(prod.rhs) - 1):
-                        for j in xrange(i+1, len(prod.rhs)):
+                    for i in range(len(prod.rhs) - 1):
+                        for j in range(i+1, len(prod.rhs)):
                             if not prod.rhs[i].followSetMerge( \
                               prod.rhs[j].firstSet):
                                 done = False
@@ -1894,7 +1862,7 @@ the Parser class for parsing.
 
                     # For A ::= ab, or A ::= aBb where first(b) contains <e>,
                     # merge follow(A) into follow(B).
-                    for i in xrange(len(prod.rhs)-1, -1, -1):
+                    for i in range(len(prod.rhs)-1, -1, -1):
                         if not prod.rhs[i].followSetMerge(prod.lhs.followSet):
                             done = False
                         if epsilon not in prod.rhs[i].firstSet:
@@ -1913,7 +1881,7 @@ the Parser class for parsing.
         worklist = [0]
         if self._verbose:
             nwork = len(worklist)
-            print "Parsing.Spec: Generating LR(1) itemset collection... ",
+            print_("Parsing.Spec: Generating LR(1) itemset collection... ", end=' ')
             sys.stdout.write("+")
             sys.stdout.flush()
 
@@ -1921,7 +1889,7 @@ the Parser class for parsing.
         # indices; these itemsets are the ones referred to the key itemset.
         itemSetsHash = {tItemSet: [0]}
 
-        syms = self._tokens.values() + self._nonterms.values()
+        syms = list(self._tokens.values()) + list(self._nonterms.values())
         while len(worklist) > 0:
             if self._verbose:
                 if abs(len(worklist) - nwork) >= 10:
@@ -1979,10 +1947,9 @@ the Parser class for parsing.
         assert self._nConflicts == 0
 
         if self._verbose:
-            print \
-              "Parsing.Spec: Generating LR(1) parsing tables (%d state%s)... " \
+            print_("Parsing.Spec: Generating LR(1) parsing tables (%d state%s)... " \
               % (len(self._itemSets), \
-              ("s", "")[len(self._itemSets) == 1]),
+              ("s", "")[len(self._itemSets) == 1]), end=' ')
             sys.stdout.flush()
 
         itemSetsHash = self._itemSetsHash
@@ -2015,7 +1982,7 @@ the Parser class for parsing.
                         self._startState = len(self._action) - 1
                 # X ::= a*
                 elif item.dotPos == len(item.production.rhs):
-                    for lookahead in item.lookahead.iterkeys():
+                    for lookahead in six.iterkeys(item.lookahead):
                         self._actionAppend(state, lookahead, \
                           ReduceAction(item.production))
                 else:
@@ -2024,7 +1991,7 @@ the Parser class for parsing.
             # _goto.
             state = {}
             self._goto.append(state)
-            for nonterm in self._nonterms.itervalues():
+            for nonterm in six.itervalues(self._nonterms):
                 itemSetB = itemSet.goto(nonterm)
                 if itemSetB in itemSetsHash:
                     for i in itemSetsHash[itemSetB]:
@@ -2058,10 +2025,10 @@ the Parser class for parsing.
         assert self._nImpure == 0
 
         if self._verbose:
-            print "Parsing.Spec: Disambiguating LR(1) parsing tables... ",
+            print_("Parsing.Spec: Disambiguating LR(1) parsing tables... ", end=' ')
             sys.stdout.flush()
 
-        for stateInd in xrange(len(self._action)):
+        for stateInd in range(len(self._action)):
             state = self._action[stateInd]
             if self._verbose:
                 vRes = "."
@@ -2074,9 +2041,9 @@ the Parser class for parsing.
                 actStats = [True] * len(acts)
 
                 # Fill in the cells of actStats.
-                for i in xrange(len(acts)):
+                for i in range(len(acts)):
                     actI = acts[i]
-                    for j in xrange(i+1, len(acts)):
+                    for j in range(i+1, len(acts)):
                         actJ = acts[j]
                         res = self._resolve(sym, actI, actJ)
                         if res == "neither":
@@ -2098,7 +2065,7 @@ the Parser class for parsing.
                 # Look for actions that can coexist or dominate all other
                 # actions.
                 newActs = []
-                for j in xrange(len(acts)):
+                for j in range(len(acts)):
                     if actStats[j]:
                         newActs.append(acts[j])
                 # Replace the action set if there exists a valid resolution
@@ -2206,7 +2173,7 @@ the Parser class for parsing.
                         assert False
         else:
             if newPrec in oldPrec.equiv:
-                print "%r <--> %r" % (oldPrec, newPrec)
+                print_("%r <--> %r" % (oldPrec, newPrec))
             assert newPrec not in oldPrec.equiv
             # No specified relationship between precedences.
             ret = "err"
@@ -2267,7 +2234,7 @@ Signal end-of-input to the parser.
         assert self._stack[-1][0] == token # <$>.
         if self._verbose:
             self._printStack()
-            print "   --> accept"
+            print_("   --> accept")
         self._stack.pop()
 
         top = self._stack[-1]
@@ -2277,19 +2244,19 @@ Signal end-of-input to the parser.
     def _act(self, sym, symSpec):
         if self._verbose:
             self._printStack()
-            print "INPUT: %r" % sym
+            print_("INPUT: %r" % sym)
 
         while True:
             top = self._stack[-1]
             if symSpec not in self._spec._action[top[1]]:
-                raise SyntaxError, ("Unexpected token: %r" % sym)
+                raise SyntaxError("Unexpected token: %r" % sym)
 
             actions = self._spec._action[top[1]][symSpec]
             assert len(actions) == 1
             action = actions[0]
 
             if self._verbose:
-                print "   --> %r" % action
+                print_("   --> %r" % action)
             if type(action) == ShiftAction:
                 self._stack.append((sym, action.nextState))
                 break
@@ -2301,25 +2268,25 @@ Signal end-of-input to the parser.
                 self._printStack()
 
     def _printStack(self):
-            print "STACK:",
+            print_("STACK:", end=' ')
             for node in self._stack:
-                print "%r" % node[0],
-            print
-            print "      ",
+                print_("%r" % node[0], end=' ')
+            print_()
+            print_("      ", end=' ')
             for node in self._stack:
-                print "%r%s" % (node[1], \
-                  (" " * (len("%r" % node[0]) - len("%r" % node[1])))),
-            print
+                print_("%r%s" % (node[1], \
+                  (" " * (len("%r" % node[0]) - len("%r" % node[1])))), end=' ')
+            print_()
 
     def _reduce(self, production):
         nRhs = len(production.rhs)
         rhs = []
-        for i in xrange(len(self._stack) - nRhs, len(self._stack)):
+        for i in range(len(self._stack) - nRhs, len(self._stack)):
             rhs.append(self._stack[i][0])
 
         r = self._production(production, rhs)
 
-        for i in xrange(nRhs):
+        for i in range(nRhs):
             self._stack.pop()
 
         top = self._stack[-1]
@@ -2451,12 +2418,12 @@ method.
 Feed a token to the parser.
 """
         if self._verbose:
-            print "%s" % ("-" * 80)
-            print "INPUT: %r" % token
+            print_("%s" % ("-" * 80))
+            print_("INPUT: %r" % token)
         tokenSpec = self._spec._sym2spec[type(token)]
         self._act(token, tokenSpec)
         if len(self._gss) == 0:
-            raise SyntaxError, ("Unexpected token: %r" % token)
+            raise SyntaxError("Unexpected token: %r" % token)
 
     def eoi(self):
         """
@@ -2471,18 +2438,18 @@ Signal end-of-input to the parser.
             for path in top.paths():
                 assert len(path) == 5
                 if self._verbose:
-                    print "   --> accept %r" % path
+                    print_("   --> accept %r" % path)
                 edge = path[1]
                 assert isinstance(edge.value, Nonterm)
                 assert edge.value.symSpec == self._spec._userStartSym
                 self._start.append(edge.value)
 
         if len(self._start) == 0:
-            raise SyntaxError, "Unexpected end of input"
+            raise SyntaxError("Unexpected end of input")
 
         if self._verbose:
-            print "Start: %r" % self._start
-            print "%s" % ("-" * 80)
+            print_("Start: %r" % self._start)
+            print_("%s" % ("-" * 80))
 
     def _act(self, sym, symSpec):
         self._reductions(sym, symSpec)
@@ -2516,27 +2483,27 @@ Signal end-of-input to the parser.
                                 epsilons[action.production] = [top]
                                 workQ.append((path, action.production))
                                 if self._verbose:
-                                    print "   --> enqueue(a) %r" % \
-                                      action.production
-                                    print "                  %r" % path
+                                    print_("   --> enqueue(a) %r" % \
+                                      action.production)
+                                    print_("                  %r" % path)
                             elif top not in epsilons[action.production]:
                                 assert len([path for path in top.paths(0)]) == 1
                                 path = [p for p in top.paths(0)][0]
                                 epsilons[action.production].append(top)
                                 workQ.append((path, action.production))
                                 if self._verbose:
-                                    print "   --> enqueue(b) %r" % \
-                                      action.production
-                                    print "                  %r" % path
+                                    print_("   --> enqueue(b) %r" % \
+                                      action.production)
+                                    print_("                  %r" % path)
                         else:
                             # Iterate over all reduction paths through stack and
                             # enqueue them.
                             for path in top.paths(len(action.production.rhs)):
                                 workQ.append((path, action.production))
                                 if self._verbose:
-                                    print "   --> enqueue(c) %r" % \
-                                      action.production
-                                    print "                  %r" % path
+                                    print_("   --> enqueue(c) %r" % \
+                                      action.production)
+                                    print_("                  %r" % path)
                 i += 1
 
         # Process the work queue.
@@ -2544,8 +2511,8 @@ Signal end-of-input to the parser.
             (path, production) = workQ.pop(0)
 
             if self._verbose:
-                print "   --> reduce %r" % production
-                print "              %r" % path
+                print_("   --> reduce %r" % production)
+                print_("              %r" % path)
                 nReduces += 1
 
             self._reduce(workQ, epsilons, path, production, symSpec)
@@ -2575,16 +2542,16 @@ Signal end-of-input to the parser.
                         # There is already a below<--top link, so merge
                         # competing interpretations.
                         if self._verbose:
-                            print "   --> merge %r <--> %r" % (edge.value, r)
+                            print_("   --> merge %r <--> %r" % (edge.value, r))
                         value = production.lhs.nontermType.merge(edge.value, r)
                         if self._verbose:
                             if value == edge.value:
-                                print "             %s" % \
-                                  ("-" * len("%r" % edge.value))
+                                print_("             %s" % \
+                                  ("-" * len("%r" % edge.value)))
                             else:
-                                print "             %s      %s" % \
+                                print_("             %s      %s" % \
                                   ((" " * len("%r" % edge.value)), \
-                                  "-" * len("%r" % r))
+                                  "-" * len("%r" % r)))
                         edge.value = value
                         done = True
                         break
@@ -2592,7 +2559,7 @@ Signal end-of-input to the parser.
                     # Create a new below<--top link.
                     edge = Gsse(below, top, r)
                     if self._verbose:
-                        print "   --> shift(b) %r" % top
+                        print_("   --> shift(b) %r" % top)
 
                     # Enqueue reduction paths that were created as a result of
                     # the new link.
@@ -2606,8 +2573,8 @@ Signal end-of-input to the parser.
               self._spec._goto[below.nextState][production.lhs])
             self._gss.append(top)
             if self._verbose:
-                print "   --> shift(c) %r" % \
-                  self._spec._goto[below.nextState][production.lhs]
+                print_("   --> shift(c) %r" % \
+                  self._spec._goto[below.nextState][production.lhs])
             self._enqueueLimitedReductions(workQ, epsilons, top.edge, symSpec)
 
     # Enqueue paths that incorporate edge.
@@ -2628,17 +2595,17 @@ Signal end-of-input to the parser.
                                 epsilons[action.production] = [top]
                                 workQ.append((path, action.production))
                                 if self._verbose:
-                                    print "   --> enqueue(d) %r" % \
-                                      action.production
-                                    print "                  %r" % path
+                                    print_("   --> enqueue(d) %r" % \
+                                      action.production)
+                                    print_("                  %r" % path)
                             elif top not in epsilons[action.production]:
                                 path = [top]
                                 epsilons[action.production].append(top)
                                 workQ.append((path, action.production))
                                 if self._verbose:
-                                    print "   --> enqueue(e) %r" % \
-                                      action.production
-                                    print "                  %r" % path
+                                    print_("   --> enqueue(e) %r" % \
+                                      action.production)
+                                    print_("                  %r" % path)
                         else:
                             # Iterate over all reduction paths through stack and
                             # enqueue them if they incorporate edge.
@@ -2646,9 +2613,9 @@ Signal end-of-input to the parser.
                                 if edge in path[1::2]:
                                     workQ.append((path, action.production))
                                     if self._verbose:
-                                        print "   --> enqueue(f) %r" % \
-                                          action.production
-                                        print "                  %r" % path
+                                        print_("   --> enqueue(f) %r" % \
+                                          action.production)
+                                        print_("                  %r" % path)
 
     def _shifts(self, sym, symSpec):
         prevGss = self._gss
@@ -2671,7 +2638,7 @@ Signal end-of-input to the parser.
                             top = Gssn(topA, sym, action.nextState)
                             self._gss.append(top)
                             if self._verbose:
-                                print "   --> shift(a) %d" % action.nextState
+                                print_("   --> shift(a) %d" % action.nextState)
                                 nShifts += 1
         if self._verbose:
             if nShifts > 0:
@@ -2682,10 +2649,10 @@ Signal end-of-input to the parser.
         for top in self._gss:
             for path in top.paths():
                 if i == 0:
-                    print "STK 0:",
+                    print_("STK 0:", end=' ')
                 else:
-                    print "    %d:" % i,
+                    print_("    %d:" % i, end=' ')
                 for elm in path:
-                    print "%r" % elm,
-                print
+                    print_("%r" % elm, end=' ')
+                print_()
                 i += 1

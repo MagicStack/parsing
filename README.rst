@@ -1,3 +1,5 @@
+.. image:: https://travis-ci.org/sprymix/parsing.svg
+
 Parsing
 =======
 

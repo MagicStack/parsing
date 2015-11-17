@@ -3,9 +3,6 @@ from setuptools import setup
 
 
 extra = {}
-if sys.version_info >= (3, 0):
-    extra.update(use_2to3=True)
-
 
 f = open('README.rst', 'r')
 try:
@@ -34,6 +31,9 @@ setup(
         'Topic :: Text Processing :: General'
     ],
     packages=['parsing', 'parsing.tests', 'parsing.tests.specs'],
-    test_suite='parsing.tests.test_basic',
+    test_suite='parsing.tests',
+    install_requires=[
+        'six>=1.8.0'
+    ],
     **extra
 )
