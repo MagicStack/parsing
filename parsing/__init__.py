@@ -139,6 +139,12 @@ from six.moves import range
 from six.moves import zip
 import six.moves.cPickle
 
+from parsing.grammar import (Exception, SyntaxError, SpecError,
+    Precedence, SymbolSpec, NontermSpec, TokenSpec,
+    Production, EndOfInput, eoi, Epsilon, epsilon, NontermStart)
+from parsing.ast_objs import Symbol, Nonterm, Token
+from parsing.mod_adapt import ModuleAdapter
+
 try:
     next
 except NameError:
@@ -146,164 +152,6 @@ except NameError:
     def next(obj):
         return obj.next()
 
-#===============================================================================
-# Begin exceptions.
-#
-
-class Exception(Exception):
-    """
-Top level Parsing exception class, from which all other Parsing
-exception classes inherit.
-"""
-
-class AttributeError(Exception, AttributeError):
-    """
-Attribute error, no different from the builtin exception, except that it
-also derives from Parsing.Exception.
-"""
-
-class SpecError(Exception):
-    """
-Specification error exception.  SpecError arises when the Spec
-introspection machinery detects an error either during docstring parsing
-or parser specification generation.
-"""
-
-class SyntaxError(Exception, SyntaxError):
-    """
-Parser syntax error.  SyntaxError arises when a Parser instance detects
-a syntax error according to the Spec it is using, for the input being
-fed to it.
-"""
-
-#
-# End exceptions.
-#===============================================================================
-
-class Precedence(object):
-    """
-Precedences can be associated with tokens, non-terminals, and
-productions.  Precedence isn't as important for GLR parsers as for LR
-parsers, since GLR parsing allows for parse-time resolution of
-ambiguity.  Still, precedence can be useful for reducing the volume of
-ambiguities that must be dealt with at run-time.
-
-There are five precedence types: %fail, %nonassoc, %left, %right, and
-%split.  Each precedence can have relationships with other precedences:
-<, >, or =.  These relationships specify a directed acyclic graph (DAG),
-which is used to compute the transitive closures of relationships among
-precedences.  If no path exists between two precedences that are
-compared during conflict resolution, parser generation fails.  < and >
-are reflexive; it does not matter which is used.  Conceptually, the =
-relationship causes precedences to share a node in the DAG.
-
-During conflict resolution, an error results if no path exists in the
-DAG between the precedences under consideration.  When such a path
-exists, the highest precedence non-terminal or production takes
-precedence.  Associativity only comes into play for shift/reduce
-conflicts, where the terminal and the production have equivalent
-precedences (= relationship).  In this case, the non-terminal's
-associativity determines how the conflict is resolved.
-
-The %fail and %split associativities are special because they can be
-mixed with other associativities.  During conflict resolution, if
-another action has non-%fail associativity, then the %fail (lack of)
-associativity is overridden.  Similarly, %split associativity overrides
-any other associativity.  In contrast, any mixture of associativity
-between %nonassoc/%left/%right causes an unresolvable conflict.
-
-       %fail : Any conflict is a parser-generation-time error.
-
-               A pre-defined precedence, [none], is provided.  It has
-               %fail associativity, and has no pre-defined precedence
-               relationships.
-
-   %nonassoc : Resolve shift/reduce conflicts by removing both
-               possibilities, thus making conflicts a parse-time error.
-
-       %left : Resolve shift/reduce conflicts by reducing.
-
-      %right : Resolve shift/reduce conflicts by shifting.
-
-      %split : Do not resolve conflicts; the GLR algorithm will split
-               the parse stack when necessary.
-
-               A pre-defined precedence, [split], is provided.  It has
-               %split associativity, and has no pre-defined precedence
-               relationships.
-
-By default, all symbols have [none] precedence.  Each production
-inherits the precedence of its left-hand-side nonterminal's precedence
-unless a precedence is manually specified for the production.
-
-Following are some examples of how to specify precedence classes:
-
-  class P1(Parsing.Precedence):
-      "%split p1"
-
-  class p2(Parsing.Precedence):
-      "%left" # Name implicitly same as class name.
-
-  class P3(Parsing.Precedence):
-      "%left p3 >p2" # No whitespace is allowed between > and p2.
-
-  class P4(Parsing.Precedence):
-      "%left p4 =p3" # No whitespace is allowed between = and p3.
-"""
-    def __init__(self, name, assoc, relationships):
-        assert assoc in ["fail", "nonassoc", "left", "right", "split"]
-        assert type(relationships) == dict
-
-        self.name = name
-        self.assoc = assoc
-        self.relationships = relationships # Raw relationships specification.
-
-        self.equiv = set((self,)) # Set.  Precedences that have equivalent precedence.
-        self.dominators = set() # Set.  Precedences that have higher precedence.
-
-    def __repr__(self):
-        equiv = [prec.name for prec in self.equiv]
-        equiv.sort()
-        domin = [prec.name for prec in self.dominators]
-        domin.sort()
-        return "[%%%s %s ={%s} <{%s}]" % (self.assoc, self.name, \
-          ",".join(equiv), ",".join(domin))
-
-class SymbolSpec(int):
-    seq = 0
-
-    def __new__(cls, *args, **kwargs):
-        result = int.__new__(cls, SymbolSpec.seq)
-        result.seq = SymbolSpec.seq
-        SymbolSpec.seq += 1
-        return result
-
-    def __init__(self, name, prec):
-        assert type(name) == str
-
-        self.name = name
-        self.prec = prec
-        self.firstSet = [] # Set.
-        self.followSet = [] # Set.
-
-    def __repr__(self):
-        return "%s" % self.name
-    __str__ = __repr__
-
-    def firstSetMerge(self, sym):
-        if sym not in self.firstSet:
-            self.firstSet.append(sym)
-            return False
-        else:
-            return True
-
-    def followSetMerge(self, set):
-        ret = True
-        for sym in set:
-            if sym != epsilon and sym not in self.followSet:
-                self.followSet.append(sym)
-                ret = False
-        return ret
 
 class String(list):
     def __init__(self, args=[]):
@@ -380,221 +228,9 @@ class StringSpec(object):
             # Cache the result.
             StringSpec.cache[s] = self.firstSet
 
-class Symbol(object):
-    def __init__(self, symSpec, parser):
-        assert isinstance(symSpec, SymbolSpec)
-        assert isinstance(parser, Lr)
-        self.__symSpec = symSpec
-        self.__parser = parser
 
-    def __repr__(self):
-        return "%r" % self.symSpec
 
-    def __getSymSpec(self): return self.__symSpec
-    def __setSymSpec(self): raise AttributeError
-    symSpec = property(__getSymSpec, __setSymSpec)
 
-    def __getParser(self): return self.__parser
-    def __setParser(self): raise AttributeError
-    parser = property(__getParser, __setParser)
-
-class NontermSpec(SymbolSpec):
-    def __init__(self, nontermType, name, qualified, prec):
-        assert issubclass(nontermType, Nonterm) # Add forward decl for Lyken.
-
-        SymbolSpec.__init__(self, name, prec)
-
-        self.qualified = qualified
-        self.nontermType = nontermType
-        self.productions = [] # Set.
-
-class Nonterm(Symbol):
-    """
-Non-terminal symbols have sets of productions associated with them.  The
-productions induce a parse forest on an input token stream.  There is
-one special non-terminal, which is denoted via the %start directive,
-whereas all other non-terminals are denoted via the %nonterm directive.
-In addition to productions (%reduce directives associated with class
-methods), the merge() method may be called during resolution of
-ambiguous parses.  See the merge() documentation for further details.
-
-Following are examples of how to specify non-terminal classes and their
-associated productions:
-
-  class E(Parsing.Nonterm):
-      "%start E"
-      def __init__(self):
-          Parsing.Nonterm.__init__(self)
-          # ...
-
-      # Productions.
-      def reduceA(self, E, plus, T):
-          "%reduce E plus T [split]"
-          print "%r ::= %r %r %r." % (self, E, plus, T)
-
-      def reduceB(self, T):
-          "%reduce T"
-
-  class T(Parsing.Nonterm):
-        "%nonterm" # Name implicitly same as class name.
-      def reduceA(self, T, star, F):
-          "%reduce T star F"
-
-      def reduceB(self, F):
-          "%reduce F [p1]"
-
-  class F(Parsing.Nonterm):
-      "%nonterm F [p2]"
-      def reduceA(self, lparen, E, rparen):
-          "%reduce lparen E rparen"
-
-      def reduceB(self, id):
-          "%reduce id"
-"""
-    def __init__(self, parser):
-        assert isinstance(parser, Lr)
-        Symbol.__init__(self, parser._spec._sym2spec[type(self)], parser)
-
-    def merge(self, other):
-        """
-Merging happens when there is an ambiguity in the input that allows
-non-terminals to be part of multiple overlapping series of
-reductions.  If no merge() method is specified, the parser will
-throw a syntax error upon encountering an ambiguity that confounds
-reduction processing.  However, it may be useful to either discard
-one of the possible parses, or to explicitly record the ambiguity in
-the data structures being created during parsing.  In both of these
-cases, the non-terminal-specific merge() is the place to do the
-work; merge() returns an object that is stored by the parser onto
-the parse stack.  In the case where merge() discards one of the
-possible parses, it need only return the parse that is to be
-preserved (self or other).
-
-If multiple merges are necessary, they cause a series of merge()
-calls.  The first alternative (self) may be the result of a previous
-merge() call, whereas other will not have not been merged yet
-(unless as the result of merging further down in the parse forest).
-
-The alternative that is discarded is never touched by the parser
-again, so if any immediate cleanup is necessary, it should be done
-in merge().
-"""
-        raise SyntaxError("No merge() for %r; merging %r <--> %r" % \
-          (type(self), self, other))
-
-class Token(Symbol):
-    """
-Tokens are terminal symbols.  The parser is fed Token instances, which
-is what drives parsing.  Typically, the user will define a class that
-subclasses Parsing.Token and implement parser-specific machinery there,
-then derive all actual token types from that class.
-
-  class Token(Parsing.Token):
-      def __init__(self, parser):
-          Parsing.Token.__init__(self, parser)
-          # ...
-
-  class Plus(Token):
-      "%token plus [p1]"
-
-  class star(Token):
-      "%token star [p2]" # Name implicitly same as class name.
-
-  class lparen(Token):
-      "%token [split]"
-
-  class rparen(Token):
-      "%token [none]" # [none] not necessary, since it's the default.
-
-  class id(Token):
-      "%token"
-"""
-    def __init__(self, parser):
-        assert isinstance(parser, Lr)
-        Symbol.__init__(self, parser._spec._sym2spec[type(self)], parser)
-        self.__parser = parser
-
-# AKA terminal symbol.
-class TokenSpec(SymbolSpec):
-    def __init__(self, tokenType, name, prec):
-        assert issubclass(tokenType, Token)
-        assert type(name) == str
-        assert isinstance(prec, Precedence) or type(prec) == str
-
-        SymbolSpec.__init__(self, name, prec)
-        self.tokenType = tokenType
-
-# <$>.
-class EndOfInput(Token): pass
-class EndOfInputSpec(TokenSpec):
-    def __init__(self):
-        TokenSpec.__init__(self, EndOfInput, "<$>", "none")
-eoi = EndOfInputSpec()
-
-# <e>.
-class Epsilon(Token): pass
-class EpsilonSpec(TokenSpec):
-    def __init__(self):
-        TokenSpec.__init__(self, Epsilon, "<e>", "none")
-epsilon = EpsilonSpec()
-
-class Production(int):
-    seq = 0
-
-    def __new__(cls, *args, **kwargs):
-        result = int.__new__(cls, Production.seq)
-        result.seq = Production.seq
-        Production.seq += 1
-        return result
-
-    def __init__(self, method, qualified, prec, lhs, rhs):
-        assert isinstance(prec, Precedence)
-        assert isinstance(lhs, NontermSpec)
-        if __debug__:
-            for elm in rhs:
-                assert isinstance(elm, SymbolSpec)
-
-        self.method = method
-        self.qualified = qualified
-        self.prec = prec
-        self.lhs = lhs
-        self.rhs = rhs
-
-    def __getstate__(self):
-        return (self.qualified, self.prec, self.lhs, self.rhs, self.seq)
-
-    def __setstate__(self, data):
-        # Convert qualified name to a function reference.
-        (qualified, prec, lhs, rhs, seq) = data
-        elms = qualified.split(".")
-        method = sys.modules[elms[0]]
-        for elm in elms[1:]:
-            method = method.__dict__[elm]
-
-        # Set state.
-        self.method = method
-        self.qualified = qualified
-        self.prec = prec
-        self.lhs = lhs
-        self.rhs = rhs
-        self.seq = seq
-
-    def __repr__(self):
-        return "%r ::= %s. [%s]" % \
-          (self.lhs, " ".join(["%r" % elm for elm in self.rhs]), self.prec.name)
-
-    # Optional callback method.
-    #
-    # Called when a production is reduced.
-    def reduce(self, lhs, *rhs): pass
-
-class NontermStart(Nonterm):
-    def reduce(self, userStartSym, eoi):
-        pass
-
-class Start(Production):
-    def __init__(self, startSym, userStartSym):
-        Production.__init__(self, none, startSym, userStartSym)
 
 class Item(int):
     def __new__(cls, production, dotPos, lookahead):
@@ -966,9 +602,6 @@ verbose : If true, print progress information while generating the
         self._nImpure = 0 # Number of LR impurities (does not affect GLR).
 
         # Introspect modules and generate parse tables.
-        if type(modules) == types.ModuleType:
-            # Wrap single module in a list.
-            modules = [modules]
         self._prepare(modules, pickleFile, pickleMode, logFile, graphFile)
 
     def __getPureLR(self):
@@ -1080,13 +713,16 @@ verbose : If true, print progress information while generating the
         ret = "\n".join(lines)
         return ret
 
-    def _prepare(self, modules, pickleFile, pickleMode, logFile, graphFile):
+    def _prepare(self, adapter, pickleFile, pickleMode, logFile, graphFile):
         """
 Compile the specification into data structures that can be used by
 the Parser class for parsing.
 """
         # Get the grammar specification.
-        self._introspect(modules)
+        if isinstance(adapter, types.ModuleType) or (
+            isinstance(adapter, list) and isinstance(adapter[0], types.ModuleType)):
+            adapter = ModuleAdapter(adapter)
+        self._introspect(adapter)
 
         # Augment grammar with a special start symbol and production:
         #
@@ -1149,14 +785,11 @@ the Parser class for parsing.
             del self._tokens
             del self._productions
 
-    assoc_tok_re = re.compile(r'([<>=])([A-Za-z]\w*)')
-    token_re = re.compile(r'([A-Za-z]\w*)')
-    precedence_tok_re = re.compile(r'\[([A-Za-z]\w*)\]')
 
     # Introspect modules and find special parser declarations.  In order to be
     # a special class, the class must both 1) be subclassed from Token or
     # Nonterm, and 2) contain the appropriate %foo docstring.
-    def _introspect(self, modules):
+    def _introspect(self, adapter):
         if self._verbose:
             print_(("Parsing.Spec: Introspecting module%s to acquire formal" + \
             " grammar specification...") % ("s", "")[len(modules) == 1])
@@ -1164,135 +797,52 @@ the Parser class for parsing.
         self._precedences["none"] = self._none
         self._precedences["split"] = self._split
 
-        for module in modules:
-            d = module.__dict__
-            for k in d:
-                v = d[k]
-                if isinstance(v, type) and isinstance(v.__doc__, str):
-                    dirtoks = v.__doc__.split(" ")
+        #===========================================================
+        # Precedence.
+        #
+        for prec in adapter.get_precedences():
+            name = prec.name
+            if name in self._precedences:
+                raise SpecError("Duplicate precedence name: %s" % (name,))
+            if name in self._tokens:
+                raise SpecError("Identical token/precedence names: %s" % (name,))
+            if name in self._nonterms:
+                raise SpecError("Identical nonterm/precedence names: %s" % (name,))
+            self._precedences[name] = prec
+        
+        #===========================================================
+        # Token.
+        #
+        for token in adapter.get_tokens():
+            name = token.name
+            v = token.tokenType
+            if name in self._precedences:
+                raise SpecError("Identical precedence/token names: %s" % v.__doc__)
+            if name in self._tokens:
+                raise SpecError("Duplicate token name: %s" % v.__doc__)
+            if name in self._nonterms:
+                raise SpecError("Identical nonterm/token names: %s" % v.__doc__)
+            self._tokens[name] = token
+            self._sym2spec[v] = token
 
-                    #===========================================================
-                    # Precedence.
-                    #
-                    if issubclass(v, Precedence) and dirtoks[0] in \
-                      ["%fail", "%nonassoc", "%left", "%right", "%split"]:
-                        name = k
-                        relationships = {}
-                        i = 1
-                        while i < len(dirtoks):
-                            tok = dirtoks[i]
-                            m = self.assoc_tok_re.match(tok)
-                            if m:
-                                # Precedence relationship.
-                                if m.group(2) in relationships:
-                                    raise SpecError(("Duplicate precedence " \
-                                      + "relationship: %s") \
-                                      % v.__doc__)
-                                relationships[m.group(2)] = m.group(1)
-                            else:
-                                m = self.token_re.match(tok)
-                                if m:
-                                    if i != 1:
-                                        raise SpecError(("Precedence name must come before " \
-                                          + "relationships: %s") \
-                                          % v.__doc__)
-                                    name = m.group(1)
-                                else:
-                                    raise SpecError("Invalid precedence specification: %s" % \
-                                      v.__doc__)
-                            i += 1
+        #===========================================================
+        # Nonterm.
+        #
+        nonterms, userStart = adapter.get_nonterminals()
+        for nonterm in nonterms:
+            name = nonterm.name
+            v = nonterm.nontermType
+            if name in self._precedences:
+                raise SpecError("Identical precedence/nonterm names: %s" % \
+                    v.__doc__)
+            if name in self._tokens:
+                raise SpecError("Identical token/nonterm names: %s" % v.__doc__)
+            if name in self._nonterms:
+                raise SpecError("Duplicate nonterm name: %s" % v.__doc__)
+            self._nonterms[name] = nonterm
+            self._sym2spec[v] = nonterm
 
-                        if name in self._precedences:
-                            raise SpecError("Duplicate precedence name: %s" % v.__doc__)
-                        if name in self._tokens:
-                            raise SpecError("Identical token/precedence names: %s" % v.__doc__)
-                        if name in self._nonterms:
-                            raise SpecError("Identical nonterm/precedence names: %s" % \
-                              v.__doc__)
-                        prec = Precedence(name, dirtoks[0][1:], relationships)
-                        self._precedences[name] = prec
-                    #===========================================================
-                    # Token.
-                    #
-                    elif issubclass(v, Token) and dirtoks[0] in ["%token"]:
-                        name = k
-                        prec = None
-                        i = 1
-                        while i < len(dirtoks):
-                            tok = dirtoks[i]
-                            m = self.precedence_tok_re.match(tok)
-                            if m:
-                                if i < len(dirtoks) - 1:
-                                    raise SpecError(("Precedence must come last in token " \
-                                      + "specification: %s") % v.__doc__)
-                                prec = m.group(1)
-                            else:
-                                m = self.token_re.match(tok)
-                                if m:
-                                    name = m.group(1)
-                                else:
-                                    raise SpecError("Invalid token specification: %s" % \
-                                      v.__doc__)
-                            i += 1
-                        if name in self._precedences:
-                            raise SpecError("Identical precedence/token names: %s" % v.__doc__)
-                        if name in self._tokens:
-                            raise SpecError("Duplicate token name: %s" % v.__doc__)
-                        if name in self._nonterms:
-                            raise SpecError("Identical nonterm/token names: %s" % v.__doc__)
-                        if prec is None:
-                            prec = "none"
-                        token = TokenSpec(v, name, prec)
-                        self._tokens[name] = token
-                        self._sym2spec[v] = token
-                    #===========================================================
-                    # Nonterm.
-                    #
-                    elif issubclass(v, Nonterm) and \
-                      dirtoks[0] in ["%start", "%nonterm"]:
-                        name = None
-                        prec = None
-                        i = 1
-                        while i < len(dirtoks):
-                            tok = dirtoks[i]
-                            m = self.precedence_tok_re.match(tok)
-                            if m:
-                                if i < len(dirtoks) - 1:
-                                    raise SpecError(("Precedence must come last in " \
-                                      + "non-terminal specification: %s") % \
-                                      v.__doc__)
-                                prec = m.group(1)
-                            else:
-                                m = self.token_re.match(tok)
-                                if m:
-                                    name = m.group(1)
-                                else:
-                                    raise SpecError("Invalid non-terminal specification: %s" \
-                                      % v.__doc__)
-                            i += 1
-                        if name is None:
-                            name = k
-                        if prec is None:
-                            prec = "none"
-                        if name in self._precedences:
-                            raise SpecError("Identical precedence/nonterm names: %s" % \
-                              v.__doc__)
-                        if name in self._tokens:
-                            raise SpecError("Identical token/nonterm names: %s" % v.__doc__)
-                        if name in self._nonterms:
-                            raise SpecError("Duplicate nonterm name: %s" % v.__doc__)
-                        nonterm = NontermSpec(v, name,
-                          "%s.%s" % (module.__name__, name), prec)
-                        self._nonterms[name] = nonterm
-                        self._sym2spec[v] = nonterm
-
-                        if dirtoks[0] == "%start":
-                            # Start symbol.
-                            if self._userStartSym != None:
-                                raise SpecError("Only one start non-terminal allowed: %s" \
-                                  % v.__doc__)
-                            self._userStartSym = nonterm
-                    #===========================================================
+        self._userStartSym = userStart
         if not isinstance(self._userStartSym, NontermSpec):
             raise SpecError("No start symbol specified")
 
@@ -1324,7 +874,7 @@ the Parser class for parsing.
                         prec = None
                         for i in range(1, len(dirtoks)):
                             tok = dirtoks[i]
-                            m = self.token_re.match(tok)
+                            m = NontermSpec.token_re.match(tok)
                             if m:
                                 # Symbolic reference.
                                 if tok in self._tokens:
@@ -1336,7 +886,7 @@ the Parser class for parsing.
                                     raise SpecError(("Unknown symbol '%s' in reduction " \
                                       + "specification: %s") % (tok, v.__doc__))
                             else:
-                                m = self.precedence_tok_re.match(tok)
+                                m = NontermSpec.precedence_tok_re.match(tok)
                                 if m:
                                     # Precedence.
                                     if i < len(dirtoks) - 1:
