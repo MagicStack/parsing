@@ -4,9 +4,13 @@ classes in a module.
 """
 import types
 from parsing.grammar import Precedence, TokenSpec, NontermSpec, SpecError
-from parsing.ast_objs import Token, Nonterm
+from parsing.ast import Token, Nonterm
 
-class ModuleAdapter(object):
+class ModuleSpecSource(object):
+    """
+    ModuleSpecSource scans one or several modules for subclasses of relevant
+    classes (Precedence, Token, Nonterm) with specific docstrings.
+    """
     def __init__(self, modules):
         if type(modules) == types.ModuleType:
             # Wrap single module in a list.
