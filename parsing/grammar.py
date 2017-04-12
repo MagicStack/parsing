@@ -26,113 +26,79 @@ This module contains classes that are used in the specification of grammars.
 
 import re
 import sys
-from parsing.ast_objs import Token, Nonterm
-
-#===============================================================================
-# Begin exceptions.
-#
-
-class Exception(Exception):
-    """
-Top level Parsing exception class, from which all other Parsing
-exception classes inherit.
-"""
-
-class AttributeError(Exception, AttributeError):
-    """
-Attribute error, no different from the builtin exception, except that it
-also derives from Parsing.Exception.
-"""
-
-class SpecError(Exception):
-    """
-Specification error exception.  SpecError arises when the Spec
-introspection machinery detects an error either during docstring parsing
-or parser specification generation.
-"""
-
-class SyntaxError(Exception, SyntaxError):
-    """
-Parser syntax error.  SyntaxError arises when a Parser instance detects
-a syntax error according to the Spec it is using, for the input being
-fed to it.
-"""
-
-#
-# End exceptions.
-#===============================================================================
-
+from parsing.ast import Token, Nonterm
+from parsing.errors import SpecError
 
 class Precedence(object):
     """
-Precedences can be associated with tokens, non-terminals, and
-productions.  Precedence isn't as important for GLR parsers as for LR
-parsers, since GLR parsing allows for parse-time resolution of
-ambiguity.  Still, precedence can be useful for reducing the volume of
-ambiguities that must be dealt with at run-time.
+    Precedences can be associated with tokens, non-terminals, and
+    productions.  Precedence isn't as important for GLR parsers as for LR
+    parsers, since GLR parsing allows for parse-time resolution of
+    ambiguity.  Still, precedence can be useful for reducing the volume of
+    ambiguities that must be dealt with at run-time.
 
-There are five precedence types: %fail, %nonassoc, %left, %right, and
-%split.  Each precedence can have relationships with other precedences:
-<, >, or =.  These relationships specify a directed acyclic graph (DAG),
-which is used to compute the transitive closures of relationships among
-precedences.  If no path exists between two precedences that are
-compared during conflict resolution, parser generation fails.  < and >
-are reflexive; it does not matter which is used.  Conceptually, the =
-relationship causes precedences to share a node in the DAG.
+    There are five precedence types: %fail, %nonassoc, %left, %right, and
+    %split.  Each precedence can have relationships with other precedences:
+    <, >, or =.  These relationships specify a directed acyclic graph (DAG),
+    which is used to compute the transitive closures of relationships among
+    precedences.  If no path exists between two precedences that are
+    compared during conflict resolution, parser generation fails.  < and >
+    are reflexive; it does not matter which is used.  Conceptually, the =
+    relationship causes precedences to share a node in the DAG.
 
-During conflict resolution, an error results if no path exists in the
-DAG between the precedences under consideration.  When such a path
-exists, the highest precedence non-terminal or production takes
-precedence.  Associativity only comes into play for shift/reduce
-conflicts, where the terminal and the production have equivalent
-precedences (= relationship).  In this case, the non-terminal's
-associativity determines how the conflict is resolved.
+    During conflict resolution, an error results if no path exists in the
+    DAG between the precedences under consideration.  When such a path
+    exists, the highest precedence non-terminal or production takes
+    precedence.  Associativity only comes into play for shift/reduce
+    conflicts, where the terminal and the production have equivalent
+    precedences (= relationship).  In this case, the non-terminal's
+    associativity determines how the conflict is resolved.
 
-The %fail and %split associativities are special because they can be
-mixed with other associativities.  During conflict resolution, if
-another action has non-%fail associativity, then the %fail (lack of)
-associativity is overridden.  Similarly, %split associativity overrides
-any other associativity.  In contrast, any mixture of associativity
-between %nonassoc/%left/%right causes an unresolvable conflict.
+    The %fail and %split associativities are special because they can be
+    mixed with other associativities.  During conflict resolution, if
+    another action has non-%fail associativity, then the %fail (lack of)
+    associativity is overridden.  Similarly, %split associativity overrides
+    any other associativity.  In contrast, any mixture of associativity
+    between %nonassoc/%left/%right causes an unresolvable conflict.
 
-       %fail : Any conflict is a parser-generation-time error.
+        %fail : Any conflict is a parser-generation-time error.
 
-               A pre-defined precedence, [none], is provided.  It has
-               %fail associativity, and has no pre-defined precedence
-               relationships.
+                A pre-defined precedence, [none], is provided.  It has
+                %fail associativity, and has no pre-defined precedence
+                relationships.
 
-   %nonassoc : Resolve shift/reduce conflicts by removing both
-               possibilities, thus making conflicts a parse-time error.
+    %nonassoc : Resolve shift/reduce conflicts by removing both
+                possibilities, thus making conflicts a parse-time error.
 
-       %left : Resolve shift/reduce conflicts by reducing.
+        %left : Resolve shift/reduce conflicts by reducing.
 
-      %right : Resolve shift/reduce conflicts by shifting.
+        %right : Resolve shift/reduce conflicts by shifting.
 
-      %split : Do not resolve conflicts; the GLR algorithm will split
-               the parse stack when necessary.
+        %split : Do not resolve conflicts; the GLR algorithm will split
+                the parse stack when necessary.
 
-               A pre-defined precedence, [split], is provided.  It has
-               %split associativity, and has no pre-defined precedence
-               relationships.
+                A pre-defined precedence, [split], is provided.  It has
+                %split associativity, and has no pre-defined precedence
+                relationships.
 
-By default, all symbols have [none] precedence.  Each production
-inherits the precedence of its left-hand-side nonterminal's precedence
-unless a precedence is manually specified for the production.
+    By default, all symbols have [none] precedence.  Each production
+    inherits the precedence of its left-hand-side nonterminal's precedence
+    unless a precedence is manually specified for the production.
 
-Following are some examples of how to specify precedence classes:
+    Following are some examples of how to specify precedence classes:
 
-  class P1(Parsing.Precedence):
-      "%split p1"
+    class P1(Parsing.Precedence):
+        "%split p1"
 
-  class p2(Parsing.Precedence):
-      "%left" # Name implicitly same as class name.
+    class p2(Parsing.Precedence):
+        "%left" # Name implicitly same as class name.
 
-  class P3(Parsing.Precedence):
-      "%left p3 >p2" # No whitespace is allowed between > and p2.
+    class P3(Parsing.Precedence):
+        "%left p3 >p2" # No whitespace is allowed between > and p2.
 
-  class P4(Parsing.Precedence):
-      "%left p4 =p3" # No whitespace is allowed between = and p3.
-"""
+    class P4(Parsing.Precedence):
+        "%left p4 =p3" # No whitespace is allowed between = and p3.
+    """
     assoc_tok_re = re.compile(r'([<>=])([A-Za-z]\w*)')
 
 
@@ -336,3 +302,45 @@ class NontermStart(Nonterm):
 class Start(Production):
     def __init__(self, startSym, userStartSym):
         Production.__init__(self, none, startSym, userStartSym)
+
+class Action(object):
+    """
+Abstract base class, subclassed by {Shift,Reduce}Action.
+"""
+    def __init__(self): pass
+
+class ShiftAction(Action):
+    """
+Shift action, with assocated nextState.
+"""
+    def __init__(self, nextState):
+        Action.__init__(self)
+        self.nextState = nextState
+
+    def __repr__(self):
+        return "[shift %r]" % self.nextState
+
+    def __eq__(self, other):
+        if not isinstance(other, ShiftAction):
+            return False
+        if self.nextState != other.nextState:
+            return False
+        return True
+
+class ReduceAction(Action):
+    """
+Reduce action, with associated production.
+"""
+    def __init__(self, production):
+        Action.__init__(self)
+        self.production = production
+
+    def __repr__(self):
+        return "[reduce %r]" % self.production
+
+    def __eq__(self, other):
+        if not isinstance(other, ReduceAction):
+            return False
+        if self.production != other.production:
+            return False
+        return True
