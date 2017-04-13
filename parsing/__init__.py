@@ -135,7 +135,7 @@ from six.moves import range
 from six.moves import zip
 import six.moves.cPickle
 
-from parsing.errors import ParsingError, SpecError, UnexpectedToken
+from parsing.errors import ParsingError, SpecError, UnexpectedToken, AnyException
 from parsing.grammar import (
     Precedence, Production, SymbolSpec, NontermSpec, TokenSpec,
     EndOfInput, eoi, Epsilon, epsilon, NontermStart,
@@ -143,6 +143,11 @@ from parsing.grammar import (
 from parsing.ast import Symbol, Nonterm, Token
 from parsing.automaton import Spec
 from parsing.module_spec import ModuleSpecSource
+
+# Exception aliases for legacy code that needs the old names that
+# shadow builtin exceptions
+Exception = AnyException
+SyntaxError = UnexpectedToken
 
 try:
     next

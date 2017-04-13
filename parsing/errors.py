@@ -9,14 +9,19 @@ The Parsing module implements the following exception classes:
 #===============================================================================
 # Begin exceptions.
 #
+class AnyException(Exception):
+    """
+    Top-level class for all exceptions thrown within the Parsing module.
+    Needed for compatibility with old code - do not use.
+    """
 
-class ParsingError(Exception):
+class ParsingError(AnyException):
     """
     Top level Parsing exception class, from which we derive all exceptions that
     occur during the parsing of an input string.
     """
 
-class SpecError(ValueError):
+class SpecError(ValueError, AnyException):
     """
     Specification error exception.  SpecError arises when the Spec
     introspection machinery detects an error either during docstring parsing

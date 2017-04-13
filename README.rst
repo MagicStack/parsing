@@ -88,9 +88,19 @@ Folowing are the base classes to be subclassed by parser specifications:
 
 The Parsing module implements the following exception classes:
 
-  * Exception
-  * SpecError
-  * SyntaxError
+  * SpecError - when there is a problem with the grammar specification
+  * ParsingException - any problem that occurs during parsing
+  * UnexpectedToken - when the input sequence contains a token that is
+    not allowed by the grammar (including end-of-input)
+
+In order to maintain compatibility with legacy code, the Parsing module
+defines the following aliases. New code should use the exceptions above
+that do not shadow Python's builtin exceptions.
+
+   * Exception - superclass for all exceptions that can be raised
+   * SyntaxError - alias for UnexpectedToken
+
+Additionally, trying to set private attributes may raise:
   * AttributeError
 
 Author: Jason Evans jasone@canonware.com
