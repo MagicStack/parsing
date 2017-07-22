@@ -3,10 +3,15 @@ import parsing
 
 class TokenI(parsing.Token):
     "%token i"
+
+
 class TokenPlus(parsing.Token):
     "%token plus [split]"
+
+
 class TokenStar(parsing.Token):
     "%token star [split]"
+
 
 class S(parsing.Nonterm):
     "%start"
@@ -17,6 +22,7 @@ class S(parsing.Nonterm):
     def reduce(self, E):
         "%reduce E"
         self.E = E
+
 
 class E(parsing.Nonterm):
     "%nonterm"

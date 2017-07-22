@@ -7,6 +7,7 @@ constructed in the process.
 
 from parsing.interfaces import is_parser, is_symspec
 
+
 class Symbol(object):
     def __init__(self, symSpec, parser):
         assert is_symspec(symSpec)
@@ -17,14 +18,21 @@ class Symbol(object):
     def __repr__(self):
         return "%r" % self.symSpec
 
-    def __getSymSpec(self): return self.__symSpec
-    def __setSymSpec(self): raise AttributeError
+    def __getSymSpec(self):
+        return self.__symSpec
+
+    def __setSymSpec(self):
+        raise AttributeError
+
     symSpec = property(__getSymSpec, __setSymSpec)
 
-    def __getParser(self): return self.__parser
-    def __setParser(self): raise AttributeError
-    parser = property(__getParser, __setParser)
+    def __getParser(self):
+        return self.__parser
 
+    def __setParser(self):
+        raise AttributeError
+
+    parser = property(__getParser, __setParser)
 
 
 class Nonterm(Symbol):
@@ -70,6 +78,7 @@ class Nonterm(Symbol):
         def reduceB(self, id):
             "%reduce id"
     """
+
     def __init__(self, parser):
         assert is_parser(parser)
         Symbol.__init__(self, parser._spec._sym2spec[type(self)], parser)
@@ -98,8 +107,9 @@ class Nonterm(Symbol):
         again, so if any immediate cleanup is necessary, it should be done
         in merge().
         """
-        raise SyntaxError("No merge() for %r; merging %r <--> %r" % \
-          (type(self), self, other))
+        raise SyntaxError(
+            "No merge() for %r; merging %r <--> %r" % (
+                type(self), self, other))
 
 
 class Token(Symbol):
@@ -129,6 +139,7 @@ class Token(Symbol):
     class id(Token):
         "%token"
 """
+
     def __init__(self, parser):
         assert is_parser(parser)
         Symbol.__init__(self, parser._spec._sym2spec[type(self)], parser)

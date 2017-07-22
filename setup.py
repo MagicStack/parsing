@@ -1,4 +1,3 @@
-import sys
 from setuptools import setup
 
 
@@ -18,8 +17,8 @@ setup(
     license='MIT',
     author='Jason Evans',
     author_email='jasone@canonware.com',
-    description='A pure-Python module that implements an LR(1) parser generator, '
-                'as well as CFSM and GLR parser drivers.',
+    description='A pure-Python module that implements an LR(1) '
+                'parser generator, as well as CFSM and GLR parser drivers.',
     classifiers=[
         'Development Status :: 5 - Production/Stable',
         'Intended Audience :: Developers',

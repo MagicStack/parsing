@@ -6,13 +6,15 @@ import types
 from parsing.grammar import Precedence, TokenSpec, NontermSpec, SpecError
 from parsing.ast import Token, Nonterm
 
+
 class ModuleSpecSource(object):
     """
     ModuleSpecSource scans one or several modules for subclasses of relevant
     classes (Precedence, Token, Nonterm) with specific docstrings.
     """
+
     def __init__(self, modules):
-        if type(modules) == types.ModuleType:
+        if isinstance(modules, types.ModuleType):
             # Wrap single module in a list.
             modules = [modules]
         self.modules = modules
@@ -43,21 +45,21 @@ class ModuleSpecSource(object):
                     if m:
                         # Precedence relationship.
                         if m.group(2) in relationships:
-                            raise SpecError(("Duplicate precedence " \
-                                             + "relationship: %s") \
-                                            % v.__doc__)
+                            raise SpecError("Duplicate precedence "
+                                            "relationship: %s" % v.__doc__)
                         relationships[m.group(2)] = m.group(1)
                     else:
                         m = NontermSpec.token_re.match(tok)
                         if m:
                             if i != 1:
-                                raise SpecError(("Precedence name must come before " \
-                                                 + "relationships: %s") \
-                                                % v.__doc__)
+                                raise SpecError(
+                                    "Precedence name must come before "
+                                    "relationships: %s" % v.__doc__)
                             name = m.group(1)
                         else:
-                            raise SpecError("Invalid precedence specification: %s" % \
-                                            v.__doc__)
+                            raise SpecError(
+                                "Invalid precedence specification: %s" %
+                                v.__doc__)
                     i += 1
 
                 prec = Precedence(name, dirtoks[0][1:], relationships)
@@ -79,20 +81,21 @@ class ModuleSpecSource(object):
                     m = NontermSpec.precedence_tok_re.match(tok)
                     if m:
                         if i < len(dirtoks) - 1:
-                            raise SpecError(("Precedence must come last in token " \
-                                             + "specification: %s") % v.__doc__)
+                            raise SpecError(
+                                "Precedence must come last in token "
+                                "specification: %s" % v.__doc__)
                         prec = m.group(1)
                     else:
                         m = NontermSpec.token_re.match(tok)
                         if m:
                             name = m.group(1)
                         else:
-                            raise SpecError("Invalid token specification: %s" % \
-                                            v.__doc__)
+                            raise SpecError(
+                                "Invalid token specification: %s" % v.__doc__)
                     i += 1
                 if prec is None:
                     prec = "none"
-                #token = TokenSpec(name, v, prec)
+                # token = TokenSpec(name, v, prec)
                 token = TokenSpec(v, name, prec)
                 result.append(token)
         self._cache_tokens = result
@@ -112,8 +115,9 @@ class ModuleSpecSource(object):
                 if is_start:
                     # Start symbol.
                     if startSym is not None:
-                        raise SpecError("Only one start non-terminal allowed: %s" \
-                                        % v.__doc__)
+                        raise SpecError(
+                            "Only one start non-terminal allowed: %s" %
+                            v.__doc__)
                     startSym = nonterm
         self._cache_nonterminals = (result, startSym)
         return result, startSym

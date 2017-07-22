@@ -6,7 +6,8 @@ The Parsing module implements the following exception classes:
   * UnexpectedToken
 """
 
-#===============================================================================
+
+# ============================================================================
 # Begin exceptions.
 #
 class AnyException(Exception):
@@ -15,11 +16,13 @@ class AnyException(Exception):
     Needed for compatibility with old code - do not use.
     """
 
+
 class ParsingError(AnyException):
     """
     Top level Parsing exception class, from which we derive all exceptions that
     occur during the parsing of an input string.
     """
+
 
 class SpecError(ValueError, AnyException):
     """
@@ -27,6 +30,7 @@ class SpecError(ValueError, AnyException):
     introspection machinery detects an error either during docstring parsing
     or parser specification generation.
     """
+
 
 class UnexpectedToken(ParsingError, SyntaxError):
     """
@@ -37,4 +41,4 @@ class UnexpectedToken(ParsingError, SyntaxError):
 
 #
 # End exceptions.
-#===============================================================================
+# ============================================================================
