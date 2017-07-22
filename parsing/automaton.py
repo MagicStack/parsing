@@ -9,7 +9,8 @@ import sys
 
 from parsing.errors import SpecError
 from parsing.interfaces import is_spec_source
-from parsing.module_spec import ModuleSpecSource
+from parsing import introspection
+from parsing import module_spec
 from parsing.grammar import (Precedence, Production, TokenSpec, NontermSpec,
                              SymbolSpec, EndOfInput, eoi, Epsilon, epsilon,
                              NontermStart, Action, ShiftAction, ReduceAction)
@@ -568,7 +569,7 @@ the Parser class for parsing.
         if isinstance(adapter, types.ModuleType) or (
                 isinstance(adapter, list) and
                 isinstance(adapter[0], types.ModuleType)):
-            adapter = ModuleSpecSource(adapter)
+            adapter = module_spec.ModuleSpecSource(adapter)
         elif not is_spec_source(adapter):
             raise ValueError("%r should be a specification source" %
                              (adapter, ))
@@ -723,7 +724,7 @@ the Parser class for parsing.
                 v = d[k]
                 if (isinstance(v, types.FunctionType) and
                         isinstance(v.__doc__, str)):
-                    dirtoks = v.__doc__.split(" ")
+                    dirtoks = introspection.parse_docstring(v.__doc__)
                     if dirtoks[0] == "%reduce":
                         rhs = []
                         rhs_terms = []

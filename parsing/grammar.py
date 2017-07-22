@@ -27,6 +27,7 @@ import re
 import sys
 from parsing.ast import Token, Nonterm
 from parsing.errors import SpecError
+from parsing import introspection
 
 
 class Precedence(object):
@@ -185,7 +186,7 @@ class NontermSpec(SymbolSpec):
         if nt_subclass.__doc__ is None:
             dirtoks = ['%nonterm', name]
         else:
-            dirtoks = nt_subclass.__doc__.strip().split()
+            dirtoks = introspection.parse_docstring(nt_subclass.__doc__)
         is_start = (dirtoks[0] == '%start')
         # if dirtoks[0] in SHORTHAND:
         #    dirtoks = ['%nonterm', name]
