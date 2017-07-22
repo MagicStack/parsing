@@ -5,6 +5,7 @@ classes in a module.
 import types
 from parsing.grammar import Precedence, TokenSpec, NontermSpec, SpecError
 from parsing.ast import Token, Nonterm
+from parsing import introspection
 
 
 class ModuleSpecSource(object):
@@ -22,7 +23,7 @@ class ModuleSpecSource(object):
         for module in self.modules:
             for k, v in module.__dict__.items():
                 if isinstance(v, type) and isinstance(v.__doc__, str):
-                    dirtoks = v.__doc__.split(" ")
+                    dirtoks = introspection.parse_docstring(v.__doc__)
                     items.append((module, k, v, dirtoks))
         self.named_objs = items
         self._cache_precedences = None

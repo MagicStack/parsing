@@ -6,7 +6,10 @@ class P1(parsing.Precedence):
 
 
 class p2(parsing.Precedence):
-    "%left >p1"
+    """
+        %left
+            >p1
+    """
 
 
 # Tokens.
@@ -56,10 +59,15 @@ class T(parsing.Nonterm):
 
 
 class NontermF(parsing.Nonterm):
-    "%nonterm F [p2]"
+    """
+    %nonterm
+    F    [p2]
+    """
 
     def reduceA(self, lparen, E, rparen):
-        "%reduce lparen E rparen"
+        """%reduce
+        lparen E rparen
+        """
         self.val = '(%s)' % (E.val, )
 
     def reduceB(self, id):
