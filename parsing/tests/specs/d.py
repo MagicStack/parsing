@@ -4,26 +4,37 @@ import parsing
 # Precedences.
 class p1(parsing.Precedence):
     "%left"
+
+
 class p2(parsing.Precedence):
     "%left >p1"
+
 
 # Tokens.
 class plus(parsing.Token):
     "%token [p1]"
+
+
 class star(parsing.Token):
     "%token [p2]"
+
+
 class id(parsing.Token):
     "%token"
+
 
 # Non-terminal definitions.
 class S(parsing.Nonterm):
     "%start"
+
     def reduce(self, E):
         "%reduce E"
         self.val = E.val
 
+
 class E(parsing.Nonterm):
     "%nonterm"
+
     def reduceId(self, id):
         "%reduce id"
         self.val = 'ID'
