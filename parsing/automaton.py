@@ -4,6 +4,8 @@ using Pager's (1977) Practical General Method.
 """
 import types
 import six
+from six import print_
+import sys
 
 from parsing.errors import SpecError
 from parsing.interfaces import is_spec_source
@@ -608,8 +610,8 @@ the Parser class for parsing.
     # Nonterm, and 2) contain the appropriate %foo docstring.
     def _introspect(self, adapter):
         if self._verbose:
-            print_(("Parsing.Spec: Introspecting module%s to acquire formal" + \
-            " grammar specification...") % ("s", "")[len(modules) == 1])
+            print_(("Parsing.Spec: Introspecting to acquire formal" + \
+            " grammar specification..."))
 
         self._precedences["none"] = self._none
         self._precedences["split"] = self._split
@@ -626,7 +628,7 @@ the Parser class for parsing.
             if name in self._nonterms:
                 raise SpecError("Identical nonterm/precedence names: %s" % (name,))
             self._precedences[name] = prec
-        
+
         #===========================================================
         # Token.
         #
