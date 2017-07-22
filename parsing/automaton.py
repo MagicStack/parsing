@@ -822,30 +822,29 @@ the Parser class for parsing.
         # Write graphviz precedence graph to graphFile, if graphFile was
         # specified.
         if graphFile is not None:
-            f = open(graphFile, "w+")
-            if self._verbose:
-                print_("Parsing.Spec: Writing graphviz "
-                       "precedence graph to '%s'..." % graphFile)
-            print_('digraph Precedence {', file=f)
-            print_('    graph [bgcolor=black, labeljust="l"]', file=f)
-            print_('    node [shape=record, style=filled, color=black, '
-                   'fillcolor=gray, fontname=Helvetica, fontsize=10.0]',
-                   file=f)
-            print_('    edge [color=gray]', file=f)
-            for precA in six.itervalues(self._precedences):
-                if precA is next(iter(precA.equiv)):
-                    print_(
-                        '    Precedence_%s [label="{%s}"]' % (
-                            precA.name,
-                            "\\n".join(["%s (%s)" % (p.name, p.assoc)
-                                        for p in precA.equiv])),
-                        file=f)
-                    for precB in precA.dominators:
-                        print_('    Precedence_%s -> Precedence_%s' % (
-                            next(iter(precB.equiv)).name,
-                            next(iter(precA.equiv)).name), file=f)
-            print_('}', file=f)
-            f.close()
+            with open(graphFile, "w+") as f:
+                if self._verbose:
+                    print_("Parsing.Spec: Writing graphviz "
+                           "precedence graph to '%s'..." % graphFile)
+                print_('digraph Precedence {', file=f)
+                print_('    graph [bgcolor=black, labeljust="l"]', file=f)
+                print_('    node [shape=record, style=filled, color=black, '
+                       'fillcolor=gray, fontname=Helvetica, fontsize=10.0]',
+                       file=f)
+                print_('    edge [color=gray]', file=f)
+                for precA in six.itervalues(self._precedences):
+                    if precA is next(iter(precA.equiv)):
+                        print_(
+                            '    Precedence_%s [label="{%s}"]' % (
+                                precA.name,
+                                "\\n".join(["%s (%s)" % (p.name, p.assoc)
+                                            for p in precA.equiv])),
+                            file=f)
+                        for precB in precA.dominators:
+                            print_('    Precedence_%s -> Precedence_%s' % (
+                                next(iter(precB.equiv)).name,
+                                next(iter(precA.equiv)).name), file=f)
+                print_('}', file=f)
 
         # Iteratively build dominator sets until no more work can be done.
         done = False
@@ -888,10 +887,10 @@ the Parser class for parsing.
             if self._verbose:
                 print_("Parsing.Spec: Creating %s Spec pickle in %s..." %
                        (("fat", "skinny")[self._skinny], file))
-            f = open(file, "wb")
-            six.moves.cPickle.dump(
-                self, f, protocol=six.moves.cPickle.HIGHEST_PROTOCOL)
-            f.close()
+
+            with open(file, "wb") as f:
+                six.moves.cPickle.dump(
+                    self, f, protocol=six.moves.cPickle.HIGHEST_PROTOCOL)
 
     # Restore state from a pickle file, if a compatible one is provided.  This
     # method uses the same set of return values as does _compatible().
@@ -901,22 +900,21 @@ the Parser class for parsing.
                 print_("Parsing.Spec: Attempting to use pickle from "
                        "file \"%s\"..." % file)
             try:
-                f = open(file, "rb")
+                with open(file, "rb") as f:
+                    # Any exception at all in unpickling can be assumed to be
+                    # due to an incompatible pickle.
+                    try:
+                        spec = six.moves.cPickle.load(f)
+                    except:
+                        if self._verbose:
+                            error = sys.exc_info()
+                            print_("Parsing.Spec: Pickle load failed: "
+                                   "Exception %s: %s" % (error[0], error[1]))
+                        return "incompatible"
             except IOError:
                 if self._verbose:
                     error = sys.exc_info()
                     print_("Parsing.Spec: Pickle open failed: "
-                           "Exception %s: %s" % (error[0], error[1]))
-                return "incompatible"
-
-            # Any exception at all in unpickling can be assumed to be due to
-            # an incompatible pickle.
-            try:
-                spec = six.moves.cPickle.load(f)
-            except:
-                if self._verbose:
-                    error = sys.exc_info()
-                    print_("Parsing.Spec: Pickle load failed: "
                            "Exception %s: %s" % (error[0], error[1]))
                 return "incompatible"
 
@@ -1205,11 +1203,10 @@ the Parser class for parsing.
 
         # Write to logFile, if one was specified.
         if logFile is not None:
-            f = open(logFile, "w+")
-            if self._verbose:
-                print_("Parsing.Spec: Writing log to '%s'..." % logFile)
-            f.write("%s" % "\n".join(lines + ["%r" % self]))
-            f.close()
+            with open(logFile, "w+") as f:
+                if self._verbose:
+                    print_("Parsing.Spec: Writing log to '%s'..." % logFile)
+                f.write("%s" % "\n".join(lines + ["%r" % self]))
 
         # Conflicts are fatal.
         if self._nConflicts > 0:
