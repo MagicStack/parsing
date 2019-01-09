@@ -1466,7 +1466,7 @@ the Parser class for parsing.
             if self._verbose:
                 vRes = "."
                 vNConflicts = 0
-            for sym in state:
+            for sym in list(state):
                 nConflicts = 0
                 acts = [act for act in state[sym]]
                 # Construct a list that corresponds to acts; each element
@@ -1522,6 +1522,10 @@ the Parser class for parsing.
                 self._nActions += nActions
                 self._nConflicts += nConflicts
                 self._nImpure += nImpure
+
+                # Lr._act() does not expect an empty action list.
+                if not state[sym]:
+                    state.pop(sym)
 
             if self._verbose:
                 if vNConflicts == 0:
