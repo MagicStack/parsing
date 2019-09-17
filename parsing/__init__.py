@@ -123,7 +123,7 @@ Following are the base classes to be subclassed by parser specifications:
 """
 __all__ = ["SpecError", "UnexpectedToken", "Nonterm",
            "Precedence", "Spec", "Token", "Lr", "Glr",
-           "ModuleSpecSource"]
+           "ModuleSpecSource", "Grammar"]
 
 from six import print_
 from six.moves import range
@@ -137,6 +137,7 @@ from parsing.grammar import (Precedence, Production, SymbolSpec,       # noqa
 from parsing.ast import Symbol, Nonterm, Token                         # noqa
 from parsing.automaton import Spec
 from parsing.module_spec import ModuleSpecSource
+from parsing.class_spec import Grammar
 
 # Exception aliases for legacy code that needs the old names that
 # shadow builtin exceptions
@@ -203,9 +204,10 @@ list.
         self._start = None
         self._stack = [(Epsilon(self), 0)]
 
-    def token(self, token):
+    def token(self, token, tokenSpec=None):
         """Feed a token to the parser."""
-        tokenSpec = self._spec._sym2spec[type(token)]
+        if tokenSpec is None:
+            tokenSpec = self._spec._sym2spec[type(token)]
         self._act(token, tokenSpec)
 
     def eoi(self):
@@ -230,6 +232,8 @@ list.
         while True:
             top = self._stack[-1]
             if symSpec not in self._spec._action[top[1]]:
+                for k in self._spec._action[top[1]]:
+                    print("K:", repr(k), id(k))
                 raise UnexpectedToken("Unexpected token: %r" % sym)
 
             actions = self._spec._action[top[1]][symSpec]
@@ -406,14 +410,15 @@ method.
 
         self._paths = []
 
-    def token(self, token):
+    def token(self, token, tokenSpec=None):
         """
 Feed a token to the parser.
 """
         if self._verbose:
             print_("%s" % ("-" * 80))
             print_("INPUT: %r" % token)
-        tokenSpec = self._spec._sym2spec[type(token)]
+        if tokenSpec is None:
+            tokenSpec = self._spec._sym2spec[type(token)]
         self._act(token, tokenSpec)
         if len(self._gss) == 0:
             raise UnexpectedToken("Unexpected token: %r" % token)

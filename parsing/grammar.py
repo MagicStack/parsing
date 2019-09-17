@@ -25,7 +25,8 @@ This module contains classes that are used in the specification of grammars.
 
 import re
 import sys
-from parsing.ast import Token, Nonterm
+import types
+from parsing.ast import Token, Nonterm, is_token_factory
 from parsing.errors import SpecError
 from parsing import introspection
 
@@ -102,6 +103,28 @@ class Precedence(object):
     """
     assoc_tok_re = re.compile(r'([<>=])([A-Za-z]\w*)')
 
+    @classmethod
+    def create(cls, name=None, precedence='fail', before=None, after=None):
+        relationships = {}
+        prec = cls(name, precedence, relationships)
+        if before is not None:
+            before.dominators.add(prec)
+        if after is not None:
+            prec.dominators.add(after)
+        return prec
+
+    @classmethod
+    def left(cls, **kwargs):
+        return cls.create(precedence='left', **kwargs)
+
+    @classmethod
+    def right(cls, **kwargs):
+        return cls.create(precedence='right', **kwargs)
+
+    @classmethod
+    def nonassoc(cls, **kwargs):
+        return cls.create(precedence='nonassoc', **kwargs)
+
     def __init__(self, name, assoc, relationships):
         assert assoc in ["fail", "nonassoc", "left", "right", "split"]
         assert type(relationships) == dict
@@ -163,11 +186,12 @@ class SymbolSpec(int):
 
 
 class NontermSpec(SymbolSpec):
-    token_re = re.compile(r'([A-Za-z]\w*)')
+    token_re = re.compile(r"([A-Za-z]\w*[?+*]?|'[^']+')")
     precedence_tok_re = re.compile(r'\[([A-Za-z]\w*)\]')
 
     def __init__(self, nontermType, name, qualified, prec):
-        assert issubclass(nontermType, Nonterm)  # Add forward decl for Lyken.
+        # Add forward decl for Lyken.
+        assert isinstance(nontermType, type) and issubclass(nontermType, Nonterm), nontermType
 
         SymbolSpec.__init__(self, name, prec)
 
@@ -188,16 +212,19 @@ class NontermSpec(SymbolSpec):
         else:
             dirtoks = introspection.parse_docstring(nt_subclass.__doc__)
         is_start = (dirtoks[0] == '%start')
-        # if dirtoks[0] in SHORTHAND:
-        #    dirtoks = ['%nonterm', name]
+        if dirtoks[0][0] == '%' and dirtoks[0] not in ['%nonterm', '%start']:
+            dirtoks = ['%nonterm', name]
         symbol_name = None
         prec = None
         i = 1
         while i < len(dirtoks):
             tok = dirtoks[i]
+            if tok[0] == '%':
+                if tok not in ['%start', '%nonterm']:
+                    break
             m = NontermSpec.precedence_tok_re.match(tok)
             if m:
-                if i < len(dirtoks) - 1:
+                if i < len(dirtoks) - 1 and dirtoks[i+1][0] != '%':
                     raise SpecError("Precedence must come last in "
                                     "non-terminal specification: %s" %
                                     nt_subclass.__doc__)
@@ -221,11 +248,29 @@ class NontermSpec(SymbolSpec):
                               "%s.%s" % (module_name, name), prec)
         return nonterm, is_start
 
+    @classmethod
+    def find_literal_tokens(cls, nt_subclass, literal_tokens):
+        d = nt_subclass.__dict__
+        for k in d:
+            v = d[k]
+            if (isinstance(v, types.FunctionType) and
+                    isinstance(v.__doc__, str)):
+                dirtoks = v.__doc__.split(" ")
+                if dirtoks[0] == "%reduce":
+                    for i in range(1, len(dirtoks)):
+                        tok = dirtoks[i]
+                        m = NontermSpec.token_re.match(tok)
+                        if m and tok[0] == "'":
+                            while tok[-1] in '?*+':
+                                tok = tok[:-1]
+                            #print("find_literal_tokens:", tok, " in ", k)
+                            literal_tokens.add(tok)
+
 
 # AKA terminal symbol.
 class TokenSpec(SymbolSpec):
     def __init__(self, tokenType, name, prec):
-        assert issubclass(tokenType, Token)
+        assert is_token_factory(tokenType), repr(tokenType)
         assert type(name) == str
         assert isinstance(prec, Precedence) or type(prec) == str
 
