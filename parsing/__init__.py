@@ -280,6 +280,29 @@ list.
 
     def _production(self, production, rhs):
         sym = production.lhs.nontermType(self)
+        sym.type = production.lhs.name
+        if rhs:
+            try:
+                first_idx = 0
+                last_idx = len(rhs) - 1
+                # skip epsilon productions, look into lists (for x* and x+)
+                while last_idx >= first_idx and not rhs[last_idx]:
+                    last_idx -= 1
+                while last_idx >= first_idx and not rhs[first_idx]:
+                    first_idx += 1
+                if last_idx >= first_idx:
+                    last_rhs = rhs[last_idx]
+                    if isinstance(last_rhs, list):
+                        last_rhs = last_rhs[-1]
+                    first_rhs = rhs[first_idx]
+                    if isinstance(first_rhs, list):
+                        first_rhs = first_rhs[0]
+                    if first_rhs.range is not None and last_rhs.range is not None:
+                        sym.range = [first_rhs.range[0], last_rhs.range[1]]
+                    else:
+                        sym.range = None
+            except AttributeError:
+                pass
         nRhs = len(rhs)
         assert nRhs == len(production.rhs)
         r = production.method(sym, *rhs)
