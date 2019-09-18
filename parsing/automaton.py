@@ -11,9 +11,12 @@ from parsing.errors import SpecError
 from parsing.interfaces import is_spec_source
 from parsing import introspection
 from parsing import module_spec
+from parsing.ast import Nonterm
 from parsing.grammar import (Precedence, Production, TokenSpec, NontermSpec,
                              SymbolSpec, EndOfInput, eoi, Epsilon, epsilon,
                              NontermStart, Action, ShiftAction, ReduceAction)
+
+RETURN_NONE = object()
 
 
 class String(list):
@@ -409,6 +412,7 @@ verbose : If true, print progress information while generating the
         self._precedences = {self._none.name: self._none,
                              self._split.name: self._split}
         self._nonterms = {}
+        self._aux_nonterms = {}
         self._tokens = {eoi.name: eoi, epsilon.name: epsilon}
         self._sym2spec = {EndOfInput: eoi, Epsilon: epsilon}
         self._productions = []
@@ -566,7 +570,7 @@ Compile the specification into data structures that can be used by
 the Parser class for parsing.
 """
         # Get the grammar specification.
-        if isinstance(adapter, types.ModuleType) or (
+        if (isinstance(adapter, types.ModuleType) or 
                 isinstance(adapter, list) and
                 isinstance(adapter[0], types.ModuleType)):
             adapter = module_spec.ModuleSpecSource(adapter)
@@ -691,16 +695,60 @@ the Parser class for parsing.
                 raise SpecError(
                     "Identical precedence/nonterm names: %s" % v.__doc__)
             if name in self._tokens:
-                raise SpecError("Identical token/nonterm names: %s" %
-                                v.__doc__)
+                raise SpecError("Identical token/nonterm names: %s with %s" %
+                                name, v.__doc__)
             if name in self._nonterms:
-                raise SpecError("Duplicate nonterm name: %s" % v.__doc__)
+                print(self._nonterms)
+                raise SpecError("Duplicate nonterm name: [%s]%s" % (
+                    name, v.__doc__))
             self._nonterms[name] = nonterm
             self._sym2spec[v] = nonterm
 
         self._userStartSym = userStart
         if not isinstance(self._userStartSym, NontermSpec):
             raise SpecError("No start symbol specified")
+
+    def aux_nonterm(self, name):
+        if name in self._aux_nonterms:
+            return self._aux_nonterms[name]
+        else:
+            def list_add(self, lst, x):
+                lst.append(x)
+                return lst
+
+            original_name = name[:-1]
+            variant = name[-1]
+            prec = self._precedences['none']
+            nt_class = Nonterm
+
+            module_name = nt_class.__module__
+            qualified = '%s.%s' % (module_name, name)
+            nonterm = NontermSpec(Nonterm, name, qualified, prec)
+            try:
+                sym = self._nonterms[original_name]
+            except KeyError:
+                sym = self._tokens[original_name]
+            if variant == '?':
+                rules_rhs = [[], [sym]]
+                reducers = [lambda self: RETURN_NONE, lambda self, x: x]
+            elif variant == '*':
+                rules_rhs = [[], [nonterm, sym]]
+                reducers = [lambda self: [], list_add]
+            elif variant == '+':
+                rules_rhs = [[sym], [nonterm, sym]]
+                reducers = [lambda self, x: [x], list_add]
+            else:
+                assert False, variant
+            # do stuff
+            for i, (rhs, reducer) in enumerate(zip(rules_rhs, reducers)):
+                prod = Production(
+                    reducer, "%s._%d" % (qualified, i),
+                    prec, nonterm, rhs)
+                assert prod not in nonterm.productions
+                nonterm.productions.append(prod)
+                self._productions.append(prod)
+            self._aux_nonterms[name] = nonterm
+            return nonterm
 
     # Resolve all symbolic (named) references.
     def _references(self, logFile, graphFile):
@@ -739,6 +787,11 @@ the Parser class for parsing.
                                     rhs_terms.append(self._tokens[tok])
                                 elif tok in self._nonterms:
                                     rhs.append(self._nonterms[tok])
+                                elif tok[-1] in '?+*' and (
+                                    tok[:-1] in self._nonterms or
+                                    tok[:-1] in self._tokens
+                                ):
+                                    rhs.append(self.aux_nonterm(tok))
                                 else:
                                     raise SpecError(
                                         "Unknown symbol '%s' in reduction "
@@ -775,6 +828,7 @@ the Parser class for parsing.
                         assert prod not in nonterm.productions
                         nonterm.productions.append(prod)
                         self._productions.append(prod)
+        self._nonterms.update(self._aux_nonterms)
         if self._verbose:
             ntokens = len(self._tokens) - 1
             nnonterms = len(self._nonterms) - 1

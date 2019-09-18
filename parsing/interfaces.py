@@ -45,3 +45,6 @@ def is_spec_source(source):
             'get_precedences', 'get_tokens', 'get_nonterminals'
     ]):
         return False
+    else:
+        return True
+
