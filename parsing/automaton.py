@@ -828,6 +828,7 @@ the Parser class for parsing.
                         assert prod not in nonterm.productions
                         nonterm.productions.append(prod)
                         self._productions.append(prod)
+        self._nonterms.update(self._aux_nonterms)
         if self._verbose:
             ntokens = len(self._tokens) - 1
             nnonterms = len(self._nonterms) - 1

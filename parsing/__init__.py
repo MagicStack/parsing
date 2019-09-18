@@ -279,7 +279,7 @@ list.
         self._stack.append((r, self._spec._goto[top[1]][production.lhs]))
 
     def _production(self, production, rhs):
-        sym = production.lhs.nontermType(self)
+        sym = production.lhs.nontermType(self, production.lhs)
         sym.type = production.lhs.name
         if rhs:
             try:

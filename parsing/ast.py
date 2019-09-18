@@ -80,9 +80,11 @@ class Nonterm(Symbol):
             "%reduce id"
     """
 
-    def __init__(self, parser):
+    def __init__(self, parser, symSpec=None):
         assert is_parser(parser)
-        Symbol.__init__(self, parser._spec._sym2spec[type(self)], parser)
+        if symSpec is None:
+            symSpec = parser._spec._sym2spec[type(self)]
+        Symbol.__init__(self, symSpec, parser)
 
     def merge(self, other):
         """
