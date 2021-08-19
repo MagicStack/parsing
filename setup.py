@@ -13,6 +13,7 @@ finally:
 setup(
     name='parsing',
     version='1.6.1',
+    python_requires='>=3.6.0',
     url='http://www.canonware.com/Parsing/',
     license='MIT',
     author='Jason Evans',
@@ -24,15 +25,15 @@ setup(
         'Intended Audience :: Developers',
         'License :: OSI Approved :: MIT License',
         'Operating System :: OS Independent',
-        'Programming Language :: Python',
         'Programming Language :: Python :: 3',
         'Topic :: Software Development :: Compilers',
         'Topic :: Text Processing :: General'
     ],
     packages=['parsing', 'parsing.tests', 'parsing.tests.specs'],
-    test_suite='parsing.tests',
-    install_requires=[
-        'six>=1.8.0'
-    ],
+    extras_require={
+        'test': [
+            'flake8',
+        ]
+    },
     **extra
 )

@@ -140,9 +140,9 @@ class TestParsing(unittest.TestCase):
         from parsing.tests.specs import b
 
         spec = parsing.Spec(b, skinny=False)
-        import six.moves.cPickle
-        specPickle = six.moves.cPickle.dumps(spec)
-        spec2 = six.moves.cPickle.loads(specPickle)
+        import pickle
+        specPickle = pickle.dumps(spec)
+        spec2 = pickle.loads(specPickle)
 
         parser = TestGlrParser(spec2)
         parser.token(b.id(parser))
