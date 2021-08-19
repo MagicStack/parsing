@@ -35,8 +35,13 @@ class ModuleSpecSource(object):
             return self._cache_precedences
         result = []
         for module, k, v, dirtoks in self.named_objs:
-            if issubclass(v, Precedence) and dirtoks[0] in \
-                    ["%fail", "%nonassoc", "%left", "%right", "%split"]:
+            if issubclass(v, Precedence) and dirtoks[0] in [
+                "%fail",
+                "%nonassoc",
+                "%left",
+                "%right",
+                "%split",
+            ]:
                 name = k
                 relationships = {}
                 i = 1
@@ -46,8 +51,10 @@ class ModuleSpecSource(object):
                     if m:
                         # Precedence relationship.
                         if m.group(2) in relationships:
-                            raise SpecError("Duplicate precedence "
-                                            "relationship: %s" % v.__doc__)
+                            raise SpecError(
+                                "Duplicate precedence "
+                                "relationship: %s" % v.__doc__
+                            )
                         relationships[m.group(2)] = m.group(1)
                     else:
                         m = NontermSpec.token_re.match(tok)
@@ -55,12 +62,14 @@ class ModuleSpecSource(object):
                             if i != 1:
                                 raise SpecError(
                                     "Precedence name must come before "
-                                    "relationships: %s" % v.__doc__)
+                                    "relationships: %s" % v.__doc__
+                                )
                             name = m.group(1)
                         else:
                             raise SpecError(
-                                "Invalid precedence specification: %s" %
-                                v.__doc__)
+                                "Invalid precedence specification: %s"
+                                % v.__doc__
+                            )
                     i += 1
 
                 prec = Precedence(name, dirtoks[0][1:], relationships)
@@ -84,7 +93,8 @@ class ModuleSpecSource(object):
                         if i < len(dirtoks) - 1:
                             raise SpecError(
                                 "Precedence must come last in token "
-                                "specification: %s" % v.__doc__)
+                                "specification: %s" % v.__doc__
+                            )
                         prec = m.group(1)
                     else:
                         m = NontermSpec.token_re.match(tok)
@@ -92,7 +102,8 @@ class ModuleSpecSource(object):
                             name = m.group(1)
                         else:
                             raise SpecError(
-                                "Invalid token specification: %s" % v.__doc__)
+                                "Invalid token specification: %s" % v.__doc__
+                            )
                     i += 1
                 if prec is None:
                     prec = "none"
@@ -108,8 +119,7 @@ class ModuleSpecSource(object):
         result = []
         startSym = None
         for module, k, v, dirtoks in self.named_objs:
-            if issubclass(v, Nonterm) and \
-                            dirtoks[0] in ["%start", "%nonterm"]:
+            if issubclass(v, Nonterm) and dirtoks[0] in ["%start", "%nonterm"]:
                 nonterm, is_start = NontermSpec.from_class(v)
                 result.append(nonterm)
 
@@ -117,8 +127,9 @@ class ModuleSpecSource(object):
                     # Start symbol.
                     if startSym is not None:
                         raise SpecError(
-                            "Only one start non-terminal allowed: %s" %
-                            v.__doc__)
+                            "Only one start non-terminal allowed: %s"
+                            % v.__doc__
+                        )
                     startSym = nonterm
         self._cache_nonterminals = (result, startSym)
         return result, startSym

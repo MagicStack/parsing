@@ -9,6 +9,7 @@ class TestParsing(unittest.TestCase):
                 parsing.Lr.__init__(self, spec)
 
         from parsing.tests.specs import a
+
         spec = parsing.Spec(a)
 
         parser = TestParser(spec)
@@ -19,7 +20,7 @@ class TestParsing(unittest.TestCase):
         parser.token(a.TokenId(parser))
         parser.eoi()
         self.assertEqual(len(parser.start), 1)
-        self.assertEqual(parser.start[0].val, '[[ID * ID] + ID]')
+        self.assertEqual(parser.start[0].val, "[[ID * ID] + ID]")
 
         parser = TestParser(spec)
         parser.token(a.TokenId(parser))
@@ -29,7 +30,7 @@ class TestParsing(unittest.TestCase):
         parser.token(a.TokenId(parser))
         parser.eoi()
         self.assertEqual(len(parser.start), 1)
-        self.assertEqual(parser.start[0].val, '[ID + [ID * ID]]')
+        self.assertEqual(parser.start[0].val, "[ID + [ID * ID]]")
 
         parser = TestParser(spec)
         parser.token(a.TokenId(parser))
@@ -41,7 +42,7 @@ class TestParsing(unittest.TestCase):
         parser.token(a.TokenRparen(parser))
         parser.eoi()
         self.assertEqual(len(parser.start), 1)
-        self.assertEqual(parser.start[0].val, '[ID * ([ID + ID])]')
+        self.assertEqual(parser.start[0].val, "[ID * ([ID + ID])]")
 
     def test_basic_b(self):
         class TestParser(parsing.Glr):
@@ -49,6 +50,7 @@ class TestParsing(unittest.TestCase):
                 parsing.Glr.__init__(self, spec)
 
         from parsing.tests.specs import b
+
         spec = parsing.Spec(b, skinny=False)
 
         parser = TestParser(spec)
@@ -59,7 +61,7 @@ class TestParsing(unittest.TestCase):
         parser.token(b.id(parser))
         parser.eoi()
         self.assertEqual(len(parser.start), 1)
-        self.assertEqual(parser.start[0].val, '[[ID * ID] + ID]')
+        self.assertEqual(parser.start[0].val, "[[ID * ID] + ID]")
 
         parser = TestParser(spec)
         parser.token(b.id(parser))
@@ -69,7 +71,7 @@ class TestParsing(unittest.TestCase):
         parser.token(b.id(parser))
         parser.eoi()
         self.assertEqual(len(parser.start), 1)
-        self.assertEqual(parser.start[0].val, '[ID + [ID * ID]]')
+        self.assertEqual(parser.start[0].val, "[ID + [ID * ID]]")
 
         parser = TestParser(spec)
         parser.token(b.id(parser))
@@ -81,7 +83,7 @@ class TestParsing(unittest.TestCase):
         parser.token(b.rparen(parser))
         parser.eoi()
         self.assertEqual(len(parser.start), 1)
-        self.assertEqual(parser.start[0].val, '[ID * ([ID + ID])]')
+        self.assertEqual(parser.start[0].val, "[ID * ([ID + ID])]")
 
     def test_basic_d(self):
         class TestParser(parsing.Glr):
@@ -103,7 +105,7 @@ class TestParsing(unittest.TestCase):
         parser.eoi()
 
         self.assertEqual(len(parser.start), 1)
-        self.assertEqual(parser.start[0].val, '[[ID * ID] + [ID * ID]]')
+        self.assertEqual(parser.start[0].val, "[[ID * ID] + [ID * ID]]")
 
     def test_basic_h(self):
         class TestGlrParser(parsing.Glr):
@@ -122,7 +124,7 @@ class TestParsing(unittest.TestCase):
         parser.token(h.TokenI(parser))
         parser.eoi()
         self.assertEqual(len(parser.start), 1)
-        self.assertEqual(repr(parser.start[0]), '(i + (i * i))')
+        self.assertEqual(repr(parser.start[0]), "(i + (i * i))")
 
     def test_basic_i(self):
         class TestGlrParser(parsing.Glr):
@@ -130,6 +132,7 @@ class TestParsing(unittest.TestCase):
                 parsing.Glr.__init__(self, spec)
 
         from parsing.tests.specs import i
+
         self.assertRaises(parsing.SpecError, parsing.Spec, i)
 
     def test_basic_pickle(self):
@@ -141,6 +144,7 @@ class TestParsing(unittest.TestCase):
 
         spec = parsing.Spec(b, skinny=False)
         import pickle
+
         specPickle = pickle.dumps(spec)
         spec2 = pickle.loads(specPickle)
 
@@ -152,8 +156,8 @@ class TestParsing(unittest.TestCase):
         parser.token(b.id(parser))
         parser.eoi()
         self.assertEqual(len(parser.start), 1)
-        self.assertEqual(parser.start[0].val, '[[ID * ID] + ID]')
+        self.assertEqual(parser.start[0].val, "[[ID * ID] + ID]")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

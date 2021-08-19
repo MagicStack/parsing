@@ -121,17 +121,38 @@ Following are the base classes to be subclassed by parser specifications:
 
 
 """
-__all__ = ["SpecError", "UnexpectedToken", "Nonterm",
-           "Precedence", "Spec", "Token", "Lr", "Glr",
-           "ModuleSpecSource"]
+__all__ = [
+    "SpecError",
+    "UnexpectedToken",
+    "Nonterm",
+    "Precedence",
+    "Spec",
+    "Token",
+    "Lr",
+    "Glr",
+    "ModuleSpecSource",
+]
 
-from parsing.errors import (ParsingError, SpecError,                   # noqa
-                            UnexpectedToken, AnyException)             # noqa
-from parsing.grammar import (Precedence, Production, SymbolSpec,       # noqa
-                             NontermSpec, TokenSpec, EndOfInput,       # noqa
-                             Epsilon, epsilon, NontermStart,           # noqa
-                             ShiftAction, ReduceAction)
-from parsing.ast import Symbol, Nonterm, Token                         # noqa
+from parsing.errors import (  # noqa: F401
+    ParsingError,
+    SpecError,
+    UnexpectedToken,
+    AnyException,
+)
+from parsing.grammar import (  # noqa: F401
+    Precedence,
+    Production,
+    SymbolSpec,
+    NontermSpec,
+    TokenSpec,
+    EndOfInput,
+    Epsilon,
+    epsilon,
+    NontermStart,
+    ShiftAction,
+    ReduceAction,
+)
+from parsing.ast import Symbol, Nonterm, Token  # noqa: F401
 from parsing.automaton import Spec
 from parsing.module_spec import ModuleSpecSource
 
@@ -185,7 +206,8 @@ class Lr(object):
 A list of parsing results.  For LR parsing, there is only ever one
 result, but for compatibility with the Glr interface, start is a
 list.
-""")
+""",
+    )
 
     def __getVerbose(self):
         return self._verbose
@@ -246,15 +268,20 @@ list.
                 self._printStack()
 
     def _printStack(self):
-        print("STACK:", end=' ')
+        print("STACK:", end=" ")
         for node in self._stack:
-            print("%r" % node[0], end=' ')
+            print("%r" % node[0], end=" ")
         print()
-        print("      ", end=' ')
+        print("      ", end=" ")
         for node in self._stack:
-            print("%r%s" % (
-                node[1], (" " * (len("%r" % node[0]) - len("%r" % node[1])))),
-                end=' ')
+            print(
+                "%r%s"
+                % (
+                    node[1],
+                    (" " * (len("%r" % node[0]) - len("%r" % node[1]))),
+                ),
+                end=" ",
+            )
         print()
 
     def _reduce(self, production):
@@ -284,6 +311,7 @@ list.
 
         return r
 
+
 # ===========================================================================
 # Begin graph-structured stack (GSS) classes.
 #
@@ -310,8 +338,7 @@ class Gsse(object):
         return "{%r}" % self.value
 
     def __eq__(self, other):
-        if self.node != other.node \
-          or self.value != other.value:
+        if self.node != other.node or self.value != other.value:
             return False
         return True
 
@@ -378,6 +405,7 @@ class Gssn(object):
                     path.pop(0)
         path.pop(0)
 
+
 #
 # End graph-structured stack (GSS) classes.
 # ========================================================================
@@ -385,10 +413,9 @@ class Gssn(object):
 
 class Glr(Lr):
     """
-GLR parser.  The Glr class uses a Spec instance in order to parse input
-that is fed to it via the token() method, and terminated via the eoi()
-method.
-"""
+    GLR parser.  The Glr class uses a Spec instance in order to parse input
+    that is fed to it via the token() method, and terminated via the eoi()
+    method."""
 
     def __init__(self, spec):
         Lr.__init__(self, spec)
@@ -405,8 +432,7 @@ method.
 
     def token(self, token):
         """
-Feed a token to the parser.
-"""
+        Feed a token to the parser."""
         if self._verbose:
             print("%s" % ("-" * 80))
             print("INPUT: %r" % token)
@@ -417,8 +443,7 @@ Feed a token to the parser.
 
     def eoi(self):
         """
-Signal end-of-input to the parser.
-"""
+        Signal end-of-input to the parser."""
         token = EndOfInput(self)
         self.token(token)
 
@@ -468,24 +493,30 @@ Signal end-of-input to the parser.
                     if type(action) == ReduceAction:
                         if len(action.production.rhs) == 0:
                             if action.production not in epsilons:
-                                assert len(
-                                    [path for path in top.paths(0)]) == 1
+                                assert (
+                                    len([path for path in top.paths(0)]) == 1
+                                )
                                 path = [p for p in top.paths(0)][0]
                                 epsilons[action.production] = [top]
                                 workQ.append((path, action.production))
                                 if self._verbose:
-                                    print("   --> enqueue(a) %r" %
-                                           action.production)
+                                    print(
+                                        "   --> enqueue(a) %r"
+                                        % action.production
+                                    )
                                     print("                  %r" % path)
                             elif top not in epsilons[action.production]:
-                                assert len(
-                                    [path for path in top.paths(0)]) == 1
+                                assert (
+                                    len([path for path in top.paths(0)]) == 1
+                                )
                                 path = [p for p in top.paths(0)][0]
                                 epsilons[action.production].append(top)
                                 workQ.append((path, action.production))
                                 if self._verbose:
-                                    print("   --> enqueue(b) %r" %
-                                           action.production)
+                                    print(
+                                        "   --> enqueue(b) %r"
+                                        % action.production
+                                    )
                                     print("                  %r" % path)
                         else:
                             # Iterate over all reduction paths through stack
@@ -493,8 +524,10 @@ Signal end-of-input to the parser.
                             for path in top.paths(len(action.production.rhs)):
                                 workQ.append((path, action.production))
                                 if self._verbose:
-                                    print("   --> enqueue(c) %r" %
-                                           action.production)
+                                    print(
+                                        "   --> enqueue(c) %r"
+                                        % action.production
+                                    )
                                     print("                  %r" % path)
                 i += 1
 
@@ -526,8 +559,10 @@ Signal end-of-input to the parser.
         below = path[0]
         done = False
         for top in self._gss:
-            if top.nextState == \
-              self._spec._goto[below.nextState][production.lhs]:
+            if (
+                top.nextState
+                == self._spec._goto[below.nextState][production.lhs]
+            ):
                 # top is compatible with the reduction result we want to add to
                 # the set of stack tops.
                 for edge in top.edges():
@@ -539,12 +574,18 @@ Signal end-of-input to the parser.
                         value = production.lhs.nontermType.merge(edge.value, r)
                         if self._verbose:
                             if value == edge.value:
-                                print("             %s" %
-                                       ("-" * len("%r" % edge.value)))
+                                print(
+                                    "             %s"
+                                    % ("-" * len("%r" % edge.value))
+                                )
                             else:
-                                print("             %s      %s" %
-                                       ((" " * len("%r" % edge.value)),
-                                        "-" * len("%r" % r)))
+                                print(
+                                    "             %s      %s"
+                                    % (
+                                        (" " * len("%r" % edge.value)),
+                                        "-" * len("%r" % r),
+                                    )
+                                )
                         edge.value = value
                         done = True
                         break
@@ -557,17 +598,21 @@ Signal end-of-input to the parser.
                     # Enqueue reduction paths that were created as a result of
                     # the new link.
                     self._enqueueLimitedReductions(
-                        workQ, epsilons, edge, symSpec)
+                        workQ, epsilons, edge, symSpec
+                    )
                     done = True
                 break
         if not done:
             # There is no compatible stack top, so create a new one.
             top = Gssn(
-                below, r, self._spec._goto[below.nextState][production.lhs])
+                below, r, self._spec._goto[below.nextState][production.lhs]
+            )
             self._gss.append(top)
             if self._verbose:
-                print("   --> shift(c) %r" %
-                       self._spec._goto[below.nextState][production.lhs])
+                print(
+                    "   --> shift(c) %r"
+                    % self._spec._goto[below.nextState][production.lhs]
+                )
             self._enqueueLimitedReductions(workQ, epsilons, top.edge, symSpec)
 
     # Enqueue paths that incorporate edge.
@@ -579,8 +624,10 @@ Signal end-of-input to the parser.
                 for action in self._spec._action[top.nextState][symSpec]:
                     if type(action) == ReduceAction:
                         if len(action.production.rhs) == 0:
-                            if (gotos[top.nextState][action.production.lhs] ==
-                                    top.nextState):
+                            if (
+                                gotos[top.nextState][action.production.lhs]
+                                == top.nextState
+                            ):
                                 # Do nothing, since enqueueing a reduction
                                 # would result in performing the same reduction
                                 # twice.
@@ -590,16 +637,20 @@ Signal end-of-input to the parser.
                                 epsilons[action.production] = [top]
                                 workQ.append((path, action.production))
                                 if self._verbose:
-                                    print("   --> enqueue(d) %r" %
-                                           action.production)
+                                    print(
+                                        "   --> enqueue(d) %r"
+                                        % action.production
+                                    )
                                     print("                  %r" % path)
                             elif top not in epsilons[action.production]:
                                 path = [top]
                                 epsilons[action.production].append(top)
                                 workQ.append((path, action.production))
                                 if self._verbose:
-                                    print("   --> enqueue(e) %r" %
-                                           action.production)
+                                    print(
+                                        "   --> enqueue(e) %r"
+                                        % action.production
+                                    )
                                     print("                  %r" % path)
                         else:
                             # Iterate over all reduction paths through stack
@@ -608,8 +659,10 @@ Signal end-of-input to the parser.
                                 if edge in path[1::2]:
                                     workQ.append((path, action.production))
                                     if self._verbose:
-                                        print("   --> enqueue(f) %r" %
-                                               action.production)
+                                        print(
+                                            "   --> enqueue(f) %r"
+                                            % action.production
+                                        )
                                         print("                  %r" % path)
 
     def _shifts(self, sym, symSpec):
@@ -644,10 +697,10 @@ Signal end-of-input to the parser.
         for top in self._gss:
             for path in top.paths():
                 if i == 0:
-                    print("STK 0:", end=' ')
+                    print("STK 0:", end=" ")
                 else:
-                    print("    %d:" % i, end=' ')
+                    print("    %d:" % i, end=" ")
                 for elm in path:
-                    print("%r" % elm, end=' ')
+                    print("%r" % elm, end=" ")
                 print()
                 i += 1

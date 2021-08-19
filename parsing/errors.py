@@ -39,6 +39,7 @@ class UnexpectedToken(ParsingError, SyntaxError):
     fed to it.
     """
 
+
 #
 # End exceptions.
 # ============================================================================

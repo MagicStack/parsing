@@ -108,8 +108,8 @@ class Nonterm(Symbol):
         in merge().
         """
         raise SyntaxError(
-            "No merge() for %r; merging %r <--> %r" % (
-                type(self), self, other))
+            "No merge() for %r; merging %r <--> %r" % (type(self), self, other)
+        )
 
 
 class Token(Symbol):
@@ -137,8 +137,7 @@ class Token(Symbol):
         "%token [none]" # [none] not necessary, since it's the default.
 
     class id(Token):
-        "%token"
-"""
+        "%token" """
 
     def __init__(self, parser):
         assert is_parser(parser)

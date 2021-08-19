@@ -100,7 +100,8 @@ class Precedence(object):
     class P4(Parsing.Precedence):
         "%left p4 =p3" # No whitespace is allowed between = and p3.
     """
-    assoc_tok_re = re.compile(r'([<>=])([A-Za-z]\w*)')
+
+    assoc_tok_re = re.compile(r"([<>=])([A-Za-z]\w*)")
 
     def __init__(self, name, assoc, relationships):
         assert assoc in ["fail", "nonassoc", "left", "right", "split"]
@@ -111,7 +112,7 @@ class Precedence(object):
         self.relationships = relationships  # Raw relationships specification.
 
         # Precedences that have equivalent precedence.
-        self.equiv = set((self, ))
+        self.equiv = set((self,))
         # Precedences that have higher precedence.
         self.dominators = set()
 
@@ -121,7 +122,11 @@ class Precedence(object):
         domin = [prec.name for prec in self.dominators]
         domin.sort()
         return "[%%%s %s ={%s} <{%s}]" % (
-            self.assoc, self.name, ",".join(equiv), ",".join(domin))
+            self.assoc,
+            self.name,
+            ",".join(equiv),
+            ",".join(domin),
+        )
 
 
 class SymbolSpec(int):
@@ -163,8 +168,8 @@ class SymbolSpec(int):
 
 
 class NontermSpec(SymbolSpec):
-    token_re = re.compile(r'([A-Za-z]\w*)')
-    precedence_tok_re = re.compile(r'\[([A-Za-z]\w*)\]')
+    token_re = re.compile(r"([A-Za-z]\w*)")
+    precedence_tok_re = re.compile(r"\[([A-Za-z]\w*)\]")
 
     def __init__(self, nontermType, name, qualified, prec):
         assert issubclass(nontermType, Nonterm)  # Add forward decl for Lyken.
@@ -184,10 +189,10 @@ class NontermSpec(SymbolSpec):
         else:
             module_name = module.__name__
         if nt_subclass.__doc__ is None:
-            dirtoks = ['%nonterm', name]
+            dirtoks = ["%nonterm", name]
         else:
             dirtoks = introspection.parse_docstring(nt_subclass.__doc__)
-        is_start = (dirtoks[0] == '%start')
+        is_start = dirtoks[0] == "%start"
         # if dirtoks[0] in SHORTHAND:
         #    dirtoks = ['%nonterm', name]
         symbol_name = None
@@ -198,17 +203,20 @@ class NontermSpec(SymbolSpec):
             m = NontermSpec.precedence_tok_re.match(tok)
             if m:
                 if i < len(dirtoks) - 1:
-                    raise SpecError("Precedence must come last in "
-                                    "non-terminal specification: %s" %
-                                    nt_subclass.__doc__)
+                    raise SpecError(
+                        "Precedence must come last in "
+                        "non-terminal specification: %s" % nt_subclass.__doc__
+                    )
                 prec = m.group(1)
             else:
                 m = NontermSpec.token_re.match(tok)
                 if m:
                     symbol_name = m.group(1)
                 else:
-                    raise SpecError("Invalid non-terminal specification: %s" %
-                                    nt_subclass.__doc__)
+                    raise SpecError(
+                        "Invalid non-terminal specification: %s"
+                        % nt_subclass.__doc__
+                    )
             i += 1
         if symbol_name is None:
             symbol_name = name
@@ -217,8 +225,9 @@ class NontermSpec(SymbolSpec):
 
         # nonterm = NontermSpec(symbol_name, nt_subclass,
         #                       "%s.%s" % (module_name, name), prec)
-        nonterm = NontermSpec(nt_subclass, symbol_name,
-                              "%s.%s" % (module_name, name), prec)
+        nonterm = NontermSpec(
+            nt_subclass, symbol_name, "%s.%s" % (module_name, name), prec
+        )
         return nonterm, is_start
 
 
@@ -275,12 +284,10 @@ class Production(int):
         self.seq = seq
 
     def __repr__(self):
-        return (
-            "%r ::= %s. [%s]" % (
-                self.lhs,
-                " ".join(["%r" % elm for elm in self.rhs]),
-                self.prec.name
-            )
+        return "%r ::= %s. [%s]" % (
+            self.lhs,
+            " ".join(["%r" % elm for elm in self.rhs]),
+            self.prec.name,
         )
 
     # Optional callback method.
@@ -328,8 +335,7 @@ class Start(Production):
 
 class Action(object):
     """
-Abstract base class, subclassed by {Shift,Reduce}Action.
-"""
+    Abstract base class, subclassed by {Shift,Reduce}Action."""
 
     def __init__(self):
         pass
@@ -337,8 +343,7 @@ Abstract base class, subclassed by {Shift,Reduce}Action.
 
 class ShiftAction(Action):
     """
-Shift action, with assocated nextState.
-"""
+    Shift action, with assocated nextState."""
 
     def __init__(self, nextState):
         Action.__init__(self)
@@ -357,8 +362,7 @@ Shift action, with assocated nextState.
 
 class ReduceAction(Action):
     """
-Reduce action, with associated production.
-"""
+    Reduce action, with associated production."""
 
     def __init__(self, production):
         Action.__init__(self)

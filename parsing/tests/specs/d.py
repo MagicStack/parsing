@@ -37,12 +37,12 @@ class E(parsing.Nonterm):
 
     def reduceId(self, id):
         "%reduce id"
-        self.val = 'ID'
+        self.val = "ID"
 
     def reducePlus(self, EA, plus, EB):
         "%reduce E plus E [p1]"
-        self.val = '[%s + %s]' % (EA.val, EB.val)
+        self.val = "[%s + %s]" % (EA.val, EB.val)
 
     def reduceStar(self, EA, star, EB):
         "%reduce E star E [p2]"
-        self.val = '[%s * %s]' % (EA.val, EB.val)
+        self.val = "[%s * %s]" % (EA.val, EB.val)
