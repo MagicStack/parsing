@@ -12,8 +12,8 @@ finally:
 
 setup(
     name="parsing",
-    version="1.6.1",
-    python_requires=">=3.6.0",
+    version="2.0.0.dev0",
+    python_requires=">=3.7.0",
     url="http://www.canonware.com/Parsing/",
     license="MIT",
     author="Jason Evans",
@@ -30,9 +30,11 @@ setup(
         "Topic :: Text Processing :: General",
     ],
     packages=["parsing", "parsing.tests", "parsing.tests.specs"],
+    package_data={"parsing": ["py.typed"]},
     extras_require={
         "test": [
             "flake8",
+            MYPY_DEPENDENCY,
         ]
     },
     **extra,

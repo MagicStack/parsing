@@ -2,19 +2,24 @@
 This module contains functionality for extracting a grammar from
 classes in a module.
 """
+from __future__ import annotations
+
 import types
-from parsing.grammar import Precedence, TokenSpec, NontermSpec, SpecError
+from parsing.grammar import Precedence, PrecedenceRef, TokenSpec, NontermSpec
 from parsing.ast import Token, Nonterm
 from parsing import introspection
+from parsing.errors import SpecError
 
 
-class ModuleSpecSource(object):
+class ModuleSpecSource:
     """
     ModuleSpecSource scans one or several modules for subclasses of relevant
     classes (Precedence, Token, Nonterm) with specific docstrings.
     """
 
-    def __init__(self, modules):
+    def __init__(
+        self, modules: types.ModuleType | list[types.ModuleType]
+    ) -> None:
         if isinstance(modules, types.ModuleType):
             # Wrap single module in a list.
             modules = [modules]
@@ -26,11 +31,13 @@ class ModuleSpecSource(object):
                     dirtoks = introspection.parse_docstring(v.__doc__)
                     items.append((module, k, v, dirtoks))
         self.named_objs = items
-        self._cache_precedences = None
-        self._cache_tokens = None
-        self._cache_nonterminals = None
+        self._cache_precedences: list[Precedence] | None = None
+        self._cache_tokens: list[TokenSpec] | None = None
+        self._cache_nonterminals: tuple[
+            list[NontermSpec], NontermSpec
+        ] | None = None
 
-    def get_precedences(self):
+    def get_precedences(self) -> list[Precedence]:
         if self._cache_precedences is not None:
             return self._cache_precedences
         result = []
@@ -77,7 +84,7 @@ class ModuleSpecSource(object):
         self._cache_precedences = result
         return result
 
-    def get_tokens(self):
+    def get_tokens(self) -> list[TokenSpec]:
         if self._cache_tokens is not None:
             return self._cache_tokens
         result = []
@@ -95,7 +102,7 @@ class ModuleSpecSource(object):
                                 "Precedence must come last in token "
                                 "specification: %s" % v.__doc__
                             )
-                        prec = m.group(1)
+                        prec = PrecedenceRef(m.group(1))
                     else:
                         m = NontermSpec.token_re.match(tok)
                         if m:
@@ -106,14 +113,13 @@ class ModuleSpecSource(object):
                             )
                     i += 1
                 if prec is None:
-                    prec = "none"
-                # token = TokenSpec(name, v, prec)
+                    prec = PrecedenceRef("none")
                 token = TokenSpec(v, name, prec)
                 result.append(token)
         self._cache_tokens = result
         return result
 
-    def get_nonterminals(self):
+    def get_nonterminals(self) -> tuple[list[NontermSpec], NontermSpec]:
         if self._cache_nonterminals is not None:
             return self._cache_nonterminals
         result = []
@@ -131,5 +137,6 @@ class ModuleSpecSource(object):
                             % v.__doc__
                         )
                     startSym = nonterm
+        assert startSym is not None
         self._cache_nonterminals = (result, startSym)
         return result, startSym

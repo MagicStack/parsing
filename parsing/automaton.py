@@ -2,16 +2,31 @@
 The classes in this module are used to compute the LR(1) automaton
 using Pager's (1977) Practical General Method.
 """
+from __future__ import annotations
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Type,
+)
+
 import types
 import pickle
 import sys
 
 from parsing.errors import SpecError
-from parsing.interfaces import is_spec_source
 from parsing import introspection
 from parsing import module_spec
+from parsing.ast import Symbol
 from parsing.grammar import (
     Precedence,
+    PrecedenceRef,
     Production,
     TokenSpec,
     NontermSpec,
@@ -26,104 +41,91 @@ from parsing.grammar import (
     ReduceAction,
 )
 
+if TYPE_CHECKING:
+    from typing_extensions import Literal
+    from parsing.interfaces import SpecSource
 
-class String(list):
-    def __init__(self, args=[]):
-        list.__init__(self, args)
+    SpecCompatibility = Literal[
+        "compatible", "incompatible", "itemsets", "repickle"
+    ]
 
-        self.hash = self._hash()
+    PickleMode = Literal["r", "w", "rw"]
 
-    def __cmp__(self, other):
-        assert isinstance(other, String)
-        minLen = min(len(self), len(other))
-        for i in range(minLen):
-            if self[i] < other[i]:
-                return -1
-            elif self[i] > other[i]:
-                return 1
+    ConflictResolution = Literal[
+        "neither",  # Discard both.
+        "old",  # Keep old.
+        "both",  # Keep both.
+        "new",  # Keep new.
+        "err",  # Unresolvable conflict.
+    ]
 
-        # Prefixes are identical.  Handle trailing characters, if any.
-        if len(self) < len(other):
-            return -1
-        elif len(self) == len(other):
-            return 0
-        else:
-            assert len(self) > len(other)
-            return 1
-
-    def __eq__(self, other):
-        if len(self) == len(other):
-            for i in range(len(self)):
-                if self[i] != other[i]:
-                    return False
-            return True
-        else:
-            return False
-
-    def _hash(self):
-        ret = 5381
-        for sym in self:
-            ret = ((ret << 5) + ret) + sym.seq
-            ret &= 0xFFFFFFFFFFFFFFFF
-        return ret
-
-    def __hash__(self):
-        return self.hash
+    ActionState = Dict[SymbolSpec, List[Action]]
+    GotoState = Dict[SymbolSpec, int]
 
 
-class StringSpec(object):
-    cache = {}
+class StringSpec:
+    cache: ClassVar[dict[Tuple[SymbolSpec, ...], set[SymbolSpec]]] = {}
 
-    def __init__(self, s):
-        assert isinstance(s, String)
-        for sym in s:
-            assert isinstance(sym, SymbolSpec)
-
-        self.s = s
+    def __init__(self, ss: Iterable[SymbolSpec]) -> None:
+        self.s = s = tuple(ss)
         if s in StringSpec.cache:
             self.firstSet = StringSpec.cache[s]
         else:
             # Calculate the first set for the string encoded by the s vector.
-            self.firstSet = []  # Set.
+            self.firstSet = set()
             mergeEpsilon = True
             for sym in self.s:
                 hasEpsilon = False
                 for elm in sym.firstSet:
                     if elm == epsilon:
                         hasEpsilon = True
-                    elif sym not in self.firstSet:
-                        self.firstSet.append(elm)
+                    else:
+                        self.firstSet.add(elm)
                 if not hasEpsilon:
                     mergeEpsilon = False
                     break
             # Merge epsilon if it was in the first set of every symbol.
             if mergeEpsilon:
-                self.firstSet.append(epsilon)
+                self.firstSet.add(epsilon)
 
             # Cache the result.
             StringSpec.cache[s] = self.firstSet
 
 
-class Item(int):
-    def __new__(cls, production, dotPos, lookahead):
-        assert isinstance(production, Production)
-        assert type(dotPos) == int
-        assert dotPos >= 0
-        assert dotPos <= len(production.rhs)
-        assert type(lookahead) == list
-        if __debug__:
-            for elm in lookahead:
-                assert isinstance(elm, SymbolSpec)
+class Item:
+    hash: int
+    production: Production
+    dotPos: int
+    lookahead: Dict[SymbolSpec, SymbolSpec]
 
-        hash = (dotPos * Production.seq) + production.seq
-        result = int.__new__(cls, hash)
-        result.hash = hash
-        result.production = production
-        result.dotPos = dotPos
-        result.lookahead = dict(list(zip(lookahead, lookahead)))
-        return result
+    def __init__(
+        self,
+        production: Production,
+        dotPos: int,
+        lookahead: Iterable[SymbolSpec],
+    ) -> None:
+        assert 0 <= dotPos <= len(production.rhs)
+        self.hash = (dotPos * Production.seq) + production.seq
+        self.production = production
+        self.dotPos = dotPos
+        self.lookahead = dict(zip(lookahead, lookahead))
 
-    def __repr__(self):
+    def __hash__(self) -> int:
+        return self.hash
+
+    def __eq__(self, other: Any) -> bool:
+        if type(other) == Item:
+            return self.hash == other.hash
+        else:
+            return NotImplemented
+
+    def __lt__(self, other: Any) -> bool:
+        if type(other) == Item:
+            return self.hash < other.hash
+        else:
+            return NotImplemented
+
+    def __repr__(self) -> str:
         strs = []
         strs.append("[%r ::=" % self.production.lhs)
         assert self.dotPos <= len(self.production.rhs)
@@ -147,7 +149,7 @@ class Item(int):
 
         return "".join(strs)
 
-    def lr0__repr__(self):
+    def lr0__repr__(self) -> str:
         strs = []
         strs.append("%r ::=" % self.production.lhs)
         assert self.dotPos <= len(self.production.rhs)
@@ -163,11 +165,10 @@ class Item(int):
 
         return "".join(strs)
 
-    def lookaheadInsert(self, sym):
-        assert isinstance(sym, SymbolSpec)
+    def lookaheadInsert(self, sym: SymbolSpec) -> None:
         self.lookahead[sym] = sym
 
-    def lookaheadDisjoint(self, other):
+    def lookaheadDisjoint(self, other: Item) -> bool:
         sLookahead = self.lookahead
         oLookahead = other.lookahead
 
@@ -181,64 +182,60 @@ class Item(int):
 
         return True
 
-    def __getnewargs__(self):
-        return (self.production, self.dotPos, list(self.lookahead.keys()))
 
+class ItemSet:
+    def __init__(self) -> None:
+        self._kernel: Dict[Item, Item] = {}
+        self._added: Dict[Item, Item] = {}
 
-class ItemSet(dict):
-    def __init__(self, args=[]):
-        dict.__init__(self, args)
-        self._added = {}
-
-    def __repr__(self):
-        kernel = [item for item in self.keys()]
-        kernel.sort()
-        added = [item for item in self._added.keys()]
-        added.sort()
+    def __repr__(self) -> str:
         return "ItemSet(kernel: %s, added: %r)" % (
-            ", ".join(["%r" % item for item in kernel]),
-            ", ".join(["%r" % item for item in added]),
+            ", ".join(repr(item) for item in sorted(self._kernel)),
+            ", ".join(repr(item) for item in sorted(self._added)),
         )
 
-    def __hash__(self):
+    def __len__(self) -> int:
+        return len(self._kernel)
+
+    def __hash__(self) -> int:
         # This works because integers never overflow, and addition is
         # transitive.
         ret = 0
-        for item in self.keys():
+        for item in self._kernel:
             ret += item.hash
         return ret
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         if len(self) != len(other):
             return False
-        for sItem in self.keys():
+        for sItem in self._kernel:
             if sItem not in other:
                 return False
         return True
 
-    def __iter__(self):
-        for item in self.keys():
+    def __iter__(self) -> Iterator[Item]:
+        for item in self._kernel:
             assert item.production.lhs.name == "<S>" or item.dotPos != 0
             yield item
-        for item in self._added.keys():
+        for item in self._added:
             assert item.dotPos == 0
             assert item.production.lhs.name != "<S>"
             yield item
 
     # Merge a kernel item.
-    def append(self, item):
+    def append(self, item: Item) -> None:
         assert item.production.lhs.name == "<S>" or item.dotPos != 0
 
         if item in self:
-            self[item].lookahead.update(item.lookahead)
+            self._kernel[item].lookahead.update(item.lookahead)
         else:
             tItem = Item(
                 item.production, item.dotPos, list(item.lookahead.keys())
             )
-            self[tItem] = tItem
+            self._kernel[tItem] = tItem
 
     # Merge an added item.
-    def addedAppend(self, item):
+    def addedAppend(self, item: Item) -> bool:
         assert item.dotPos == 0
         assert item.production.lhs.name != "<S>"
 
@@ -253,45 +250,43 @@ class ItemSet(dict):
 
     # Given a list of items, compute their closure and merge the results into
     # the set of added items.
-    def _closeItems(self, items):
+    def _closeItems(self, items: List[Item]) -> None:
         # Iterate over the items until no more can be added to the closure.
         i = 0
         while i < len(items):
             item = items[i]
             rhs = item.production.rhs
             dotPos = item.dotPos
-            if dotPos < len(rhs) and isinstance(rhs[dotPos], NontermSpec):
-                for lookahead in list(item.lookahead.keys()):
-                    string = StringSpec(
-                        String(rhs[dotPos + 1 :] + [lookahead])
-                    )
-                    lhs = rhs[dotPos]
-                    for prod in lhs.productions:
-                        tItem = Item(prod, 0, string.firstSet)
-                        if self.addedAppend(tItem):
-                            items.append(tItem)
+            if dotPos < len(rhs):
+                lhs = rhs[dotPos]
+                if isinstance(lhs, NontermSpec):
+                    for lookahead in tuple(item.lookahead.keys()):
+                        string = StringSpec(rhs[dotPos + 1 :] + [lookahead])
+                        for prod in lhs.productions:
+                            tItem = Item(prod, 0, string.firstSet)
+                            if self.addedAppend(tItem):
+                                items.append(tItem)
             i += 1
 
     # Calculate and merge the kernel's transitive closure.
-    def closure(self):
+    def closure(self) -> None:
         items = []
-        for item in self.keys():
+        for item in self._kernel:
             rhs = item.production.rhs
             dotPos = item.dotPos
-            if dotPos < len(rhs) and isinstance(rhs[dotPos], NontermSpec):
-                for lookahead in item.lookahead.keys():
-                    string = StringSpec(
-                        String(rhs[dotPos + 1 :] + [lookahead])
-                    )
-                    lhs = rhs[dotPos]
-                    for prod in lhs.productions:
-                        tItem = Item(prod, 0, string.firstSet)
-                        if self.addedAppend(tItem):
-                            items.append(tItem)
+            if dotPos < len(rhs):
+                lhs = rhs[dotPos]
+                if isinstance(lhs, NontermSpec):
+                    for lookahead in item.lookahead.keys():
+                        string = StringSpec(rhs[dotPos + 1 :] + [lookahead])
+                        for prod in lhs.productions:
+                            tItem = Item(prod, 0, string.firstSet)
+                            if self.addedAppend(tItem):
+                                items.append(tItem)
         self._closeItems(items)
 
     # Calculate the kernel of the goto set, given a particular symbol.
-    def goto(self, sym):
+    def goto(self, sym: SymbolSpec) -> ItemSet:
         ret = ItemSet()
         for item in self:
             rhs = item.production.rhs
@@ -306,11 +301,11 @@ class ItemSet(dict):
     # Merge the kernel of other into this ItemSet, then update the closure.
     # It is not sufficient to copy other's added items, since other has not
     # computed its closure.
-    def merge(self, other):
+    def merge(self, other: ItemSet) -> bool:
         items = []
-        for item in other.keys():
+        for item in other._kernel:
             if item in self:
-                lookahead = self[item].lookahead
+                lookahead = self._kernel[item].lookahead
                 tLookahead = []
                 for sym in item.lookahead.keys():
                     if sym not in lookahead:
@@ -323,7 +318,7 @@ class ItemSet(dict):
                 tItem = Item(
                     item.production, item.dotPos, list(item.lookahead.keys())
                 )
-                self[tItem] = tItem
+                self._kernel[tItem] = tItem
                 items.append(tItem)
 
         if len(items) > 0:
@@ -334,16 +329,16 @@ class ItemSet(dict):
 
     # Determine if self and other are weakly compatible, as defined by the
     # Pager(1977) algorithm.
-    def weakCompat(self, other):
+    def weakCompat(self, other: ItemSet) -> bool:
         # Check for identical kernel LR(0) items,
         # and pair items, for later use.
         if len(self) != len(other):
             return False
         pairs = []
-        for sItem in self.keys():
+        for sItem in self._kernel:
             if sItem not in other:
                 return False
-            oItem = other[sItem]
+            oItem = other._kernel[sItem]
             pairs.append((sItem, oItem))
 
         # Check for lookahead compatibility.
@@ -369,22 +364,24 @@ class ItemSet(dict):
         return True
 
 
-class Spec(object):
+class Spec:
     """
     The Spec class contains the read-only data structures that the Parser
     class needs in order to parse input.  Parser generation results in a
     Spec instance, which can then be shared by multiple Parser instances."""
 
+    _sym2spec: dict[type[Symbol], SymbolSpec]
+
     def __init__(
         self,
-        modules,
-        pickleFile=None,
-        pickleMode="rw",
-        skinny=True,
-        logFile=None,
-        graphFile=None,
-        verbose=False,
-    ):
+        source: types.ModuleType | List[types.ModuleType] | SpecSource,
+        pickleFile: Optional[str] = None,
+        pickleMode: PickleMode = "rw",
+        skinny: bool = True,
+        logFile: Optional[str] = None,
+        graphFile: Optional[str] = None,
+        verbose: bool = False,
+    ) -> None:
         """
         modules : Either a single module, or a list of modules, wherein to
                   look for parser generator directives in docstrings.
@@ -408,13 +405,6 @@ class Spec(object):
 
         verbose : If true, print progress information while generating the
                   parsing tables."""
-        assert pickleFile is None or type(pickleFile) == str
-        assert pickleMode in ["rw", "r", "w"]
-        assert type(skinny) == bool
-        assert logFile is None or type(logFile) == str
-        assert graphFile is None or type(graphFile) == str
-        assert type(verbose) == bool
-
         self._skinny = skinny
         self._verbose = verbose
 
@@ -428,54 +418,140 @@ class Spec(object):
             self._none.name: self._none,
             self._split.name: self._split,
         }
-        self._nonterms = {}
-        self._tokens = {eoi.name: eoi, epsilon.name: epsilon}
-        self._sym2spec = {EndOfInput: eoi, Epsilon: epsilon}
-        self._productions = []
+        self._nonterms: Dict[str, NontermSpec] = {}
+        self._tokens: Dict[str, TokenSpec] = {
+            eoi.name: eoi,
+            epsilon.name: epsilon,
+        }
+        self._sym2spec: Dict[Type[Symbol], SymbolSpec] = {
+            EndOfInput: eoi,
+            Epsilon: epsilon,
+        }
+        self._productions: list[Production] = []
 
-        self._userStartSym = None
-        self._startSym = None
-        self._startProd = None
+        sources: list[types.ModuleType] | SpecSource
+        if isinstance(source, types.ModuleType):
+            sources = [source]
+        else:
+            sources = source
+
+        if not isinstance(sources, list):
+            spec_source = sources
+        else:
+            spec_source = module_spec.ModuleSpecSource(sources)
+
+        if self._verbose:
+            print(
+                (
+                    "Parsing.Spec: Introspecting to acquire formal "
+                    "grammar specification..."
+                )
+            )
+
+        # ===========================================================
+        # Precedence.
+        #
+        for prec in spec_source.get_precedences():
+            name = prec.name
+            if name in self._precedences:
+                raise SpecError("Duplicate precedence name: %s" % (name,))
+            if name in self._tokens:
+                raise SpecError(
+                    "Identical token/precedence names: %s" % (name,)
+                )
+            if name in self._nonterms:
+                raise SpecError(
+                    "Identical nonterm/precedence names: %s" % (name,)
+                )
+            self._precedences[name] = prec
+
+        # ===========================================================
+        # Token.
+        #
+        for token in spec_source.get_tokens():
+            name = token.name
+            tt = token.tokenType
+            if name in self._precedences:
+                raise SpecError(
+                    "Identical precedence/token names: %s" % tt.__doc__
+                )
+            if name in self._tokens:
+                raise SpecError("Duplicate token name: %s" % tt.__doc__)
+            if name in self._nonterms:
+                raise SpecError(
+                    "Identical nonterm/token names: %s" % tt.__doc__
+                )
+            self._tokens[name] = token
+            self._sym2spec[tt] = token
+
+        # ===========================================================
+        # Nonterm.
+        #
+        nonterms, userStart = spec_source.get_nonterminals()
+        for nonterm in nonterms:
+            name = nonterm.name
+            nt = nonterm.nontermType
+            if name in self._precedences:
+                raise SpecError(
+                    "Identical precedence/nonterm names: %s" % nt.__doc__
+                )
+            if name in self._tokens:
+                raise SpecError(
+                    "Identical token/nonterm names: %s" % nt.__doc__
+                )
+            if name in self._nonterms:
+                raise SpecError("Duplicate nonterm name: %s" % nt.__doc__)
+            self._nonterms[name] = nonterm
+            self._sym2spec[nt] = nonterm
+
+        self._userStartSym = userStart
+        if not isinstance(self._userStartSym, NontermSpec):
+            raise SpecError("No start symbol specified")
+
+        self._startSym = NontermSpec(
+            NontermStart, "<S>", f"{__name__}.NontermStart", self._none
+        )
+
+        self._startProd = Production(
+            NontermStart.reduce,
+            f"{__name__}.NontermStart.reduce",
+            self._none,
+            self._startSym,
+            [self._userStartSym, eoi],
+        )
 
         # Everything below this point is computed from the above (once
         # introspection is complete).
 
-        self._itemSets = (
-            []
-        )  # Each element corresponds to an element in _action.
-        self._itemSetsHash = None
+        # Each element corresponds to an element in _action.
+        self._itemSets: list[ItemSet] = []
+        self._itemSetsHash: dict[ItemSet, list[int]] | None = None
         # LR parsing tables.  The tables conceptually contain one state per
         # row, where each row contains one element per symbol.  The table is
         # conceptually in row-major form, but each row is actually a
         # dictionary. If no entry for a symbol exists for a particular state,
         # then input of that symbol is an error for that state.
-        self._action = []
-        self._goto = []
-        self._startState = None
+        self._action: list[ActionState] = []
+        self._goto: list[GotoState] = []
+        self._startState: int | None = None
         self._nActions = 0
         self._nConflicts = 0
         self._nImpure = 0  # Number of LR impurities (does not affect GLR).
 
-        # Introspect modules and generate parse tables.
-        self._prepare(modules, pickleFile, pickleMode, logFile, graphFile)
+        # Generate parse tables.
+        self._prepare(pickleFile, pickleMode, logFile, graphFile)
 
-    def __getPureLR(self):
+    def __getPureLR(self) -> int:
         return self._nConflicts + self._nImpure == 0
 
-    def __setPureLR(self):
-        raise AttributeError
+    pureLR = property(__getPureLR)
 
-    pureLR = property(__getPureLR, __setPureLR)
-
-    def __getConflicts(self):
+    def __getConflicts(self) -> int:
         return self._nConflicts
 
-    def __setConflicts(self):
-        raise AttributeError
+    conflicts = property(__getConflicts)
 
-    conflicts = property(__getConflicts, __setConflicts)
-
-    def __repr__(self):
+    def __repr__(self) -> str:
         if self._skinny:
             # Print a very reduced summary, since most info has been discarded.
             return "Parsing.Spec: %d states, %d actions (%d split)" % (
@@ -495,22 +571,21 @@ class Spec(object):
             lines.append("  %r" % prec)
 
         lines.append("Tokens:")
-        syms = [sym for sym in self._tokens.values()]
-        syms.sort()
-        for token in syms:
+        sym: SymbolSpec
+        tokens = [sym for sym in self._tokens.values()]
+        for token in sorted(tokens):
             lines.append("  %r %r" % (token, token.prec))
             lines.append("    First set: %r" % token.firstSet)
             lines.append("    Follow set: %r" % token.followSet)
 
         lines.append("Non-terminals:")
-        syms = [sym for sym in self._nonterms.values()]
-        syms.sort()
-        for sym in syms:
+        nonterms = [sym for sym in self._nonterms.values()]
+        for sym in sorted(nonterms):
             lines.append("  %r %r" % (sym, sym.prec))
             lines.append("    First set: %r" % sym.firstSet)
             lines.append("    Follow set: %r" % sym.followSet)
             lines.append("    Productions:")
-            prods = sym.productions[:]
+            prods = list(sym.productions)
             prods.sort()
             for prod in prods:
                 lines.append("      %r" % prod)
@@ -562,8 +637,7 @@ class Spec(object):
                 )
             lines.append("    Goto:")
             syms = [sym for sym in self._goto[i]]
-            syms.sort()
-            for sym in syms:
+            for sym in sorted(syms):
                 lines.append("    %15r : %r" % (sym, self._goto[i][sym]))
             lines.append("    Action:")
             syms = [sym for sym in self._action[i]]
@@ -599,38 +673,20 @@ class Spec(object):
         ret = "\n".join(lines)
         return ret
 
-    def _prepare(self, adapter, pickleFile, pickleMode, logFile, graphFile):
+    def _prepare(
+        self,
+        pickleFile: Optional[str],
+        pickleMode: PickleMode,
+        logFile: Optional[str],
+        graphFile: Optional[str],
+    ) -> None:
         """
         Compile the specification into data structures that can be used by
         the Parser class for parsing."""
-        # Get the grammar specification.
-        if isinstance(adapter, types.ModuleType) or (
-            isinstance(adapter, list)
-            and isinstance(adapter[0], types.ModuleType)
-        ):
-            adapter = module_spec.ModuleSpecSource(adapter)
-        elif not is_spec_source(adapter):
-            raise ValueError(
-                "%r should be a specification source" % (adapter,)
-            )
-        self._introspect(adapter)
-
         # Augment grammar with a special start symbol and production:
         #
         #   <S> ::= S <$>.
-        assert self._startSym is None
-        assert isinstance(self._userStartSym, NontermSpec)
-        self._startSym = NontermSpec(
-            NontermStart, "<S>", "%s.NontermStart" % __name__, self._none
-        )
-        self._startProd = Production(
-            NontermStart.reduce,
-            "%s.NontermStart.reduce" % __name__,
-            self._none,
-            self._startSym,
-            [self._userStartSym, eoi],
-        )
-        self._startSym.productions.append(self._startProd)
+        self._startSym.productions.add(self._startProd)
         self._nonterms["<S>"] = self._startSym
         self._productions.append(self._startProd)
 
@@ -685,7 +741,7 @@ class Spec(object):
     # Introspect modules and find special parser declarations.  In order to be
     # a special class, the class must both 1) be subclassed from Token or
     # Nonterm, and 2) contain the appropriate %foo docstring.
-    def _introspect(self, adapter):
+    def _introspect(self, spec_source: SpecSource) -> None:
         if self._verbose:
             print(
                 (
@@ -700,7 +756,7 @@ class Spec(object):
         # ===========================================================
         # Precedence.
         #
-        for prec in adapter.get_precedences():
+        for prec in spec_source.get_precedences():
             name = prec.name
             if name in self._precedences:
                 raise SpecError("Duplicate precedence name: %s" % (name,))
@@ -717,60 +773,62 @@ class Spec(object):
         # ===========================================================
         # Token.
         #
-        for token in adapter.get_tokens():
+        for token in spec_source.get_tokens():
             name = token.name
-            v = token.tokenType
+            tt = token.tokenType
             if name in self._precedences:
                 raise SpecError(
-                    "Identical precedence/token names: %s" % v.__doc__
+                    "Identical precedence/token names: %s" % tt.__doc__
                 )
             if name in self._tokens:
-                raise SpecError("Duplicate token name: %s" % v.__doc__)
+                raise SpecError("Duplicate token name: %s" % tt.__doc__)
             if name in self._nonterms:
                 raise SpecError(
-                    "Identical nonterm/token names: %s" % v.__doc__
+                    "Identical nonterm/token names: %s" % tt.__doc__
                 )
             self._tokens[name] = token
-            self._sym2spec[v] = token
+            self._sym2spec[tt] = token
 
         # ===========================================================
         # Nonterm.
         #
-        nonterms, userStart = adapter.get_nonterminals()
+        nonterms, userStart = spec_source.get_nonterminals()
         for nonterm in nonterms:
             name = nonterm.name
-            v = nonterm.nontermType
+            nt = nonterm.nontermType
             if name in self._precedences:
                 raise SpecError(
-                    "Identical precedence/nonterm names: %s" % v.__doc__
+                    "Identical precedence/nonterm names: %s" % nt.__doc__
                 )
             if name in self._tokens:
                 raise SpecError(
-                    "Identical token/nonterm names: %s" % v.__doc__
+                    "Identical token/nonterm names: %s" % nt.__doc__
                 )
             if name in self._nonterms:
-                raise SpecError("Duplicate nonterm name: %s" % v.__doc__)
+                raise SpecError("Duplicate nonterm name: %s" % nt.__doc__)
             self._nonterms[name] = nonterm
-            self._sym2spec[v] = nonterm
+            self._sym2spec[nt] = nonterm
 
         self._userStartSym = userStart
         if not isinstance(self._userStartSym, NontermSpec):
             raise SpecError("No start symbol specified")
 
     # Resolve all symbolic (named) references.
-    def _references(self, logFile, graphFile):
+    def _references(
+        self, logFile: Optional[str], graphFile: Optional[str]
+    ) -> None:
         # Build the graph of Precedence relationships.
         self._resolvePrec(graphFile)
 
         # Resolve Token-->Precedence references.
         for token in self._tokens.values():
-            if type(token.prec) == str:
-                token.prec = self._precedences[token.prec]
+            if isinstance(token.prec, PrecedenceRef):
+                token.prec = self._precedences[token.prec.name]
 
         # Resolve Nonterm-->Precedence references.
         for nonterm in self._nonterms.values():
-            if type(nonterm.prec) == str:
-                nonterm.prec = self._precedences[nonterm.prec]
+            if isinstance(nonterm.prec, PrecedenceRef):
+                nonterm.prec = self._precedences[nonterm.prec.name]
 
         # Resolve Nonterm-->{Nonterm,Token,Precedence} references.
         for nonterm in self._nonterms.values():
@@ -782,7 +840,7 @@ class Spec(object):
                 ):
                     dirtoks = introspection.parse_docstring(v.__doc__)
                     if dirtoks[0] == "%reduce":
-                        rhs = []
+                        rhs: List[SymbolSpec] = []
                         rhs_terms = []
                         prec = None
                         for i in range(1, len(dirtoks)):
@@ -835,7 +893,7 @@ class Spec(object):
                             rhs,
                         )
                         assert prod not in nonterm.productions
-                        nonterm.productions.append(prod)
+                        nonterm.productions.add(prod)
                         self._productions.append(prod)
         if self._verbose:
             ntokens = len(self._tokens) - 1
@@ -855,7 +913,7 @@ class Spec(object):
             )
 
     # Build the graph of Precedence relationships.
-    def _resolvePrec(self, graphFile):
+    def _resolvePrec(self, graphFile: Optional[str]) -> None:
         # Resolve symbolic references and populate equiv/dominators.
         for precA in self._precedences.values():
             for precBName in precA.relationships:
@@ -962,7 +1020,7 @@ class Spec(object):
             raise SpecError("\n".join(cycles))
 
     # Store state to a pickle file, if requested.
-    def _pickle(self, file, mode):
+    def _pickle(self, file: Optional[str], mode: PickleMode) -> None:
         if self._skinny:
             # Discard data that don't need to be pickled.
             del self._startSym
@@ -983,7 +1041,9 @@ class Spec(object):
 
     # Restore state from a pickle file, if a compatible one is provided.  This
     # method uses the same set of return values as does _compatible().
-    def _unpickle(self, file, mode):
+    def _unpickle(
+        self, file: Optional[str], mode: PickleMode
+    ) -> SpecCompatibility:
         if file is not None and "r" in mode:
             if self._verbose:
                 print(
@@ -995,7 +1055,7 @@ class Spec(object):
                     # Any exception at all in unpickling can be assumed to be
                     # due to an incompatible pickle.
                     try:
-                        spec = pickle.load(f)
+                        spec: Spec = pickle.load(f)
                     except Exception:
                         if self._verbose:
                             error = sys.exc_info()
@@ -1100,8 +1160,8 @@ class Spec(object):
     #                not.
     #
     #   "incompatible" : No useful compatibility.
-    def _compatible(self, other):
-        ret = "compatible"
+    def _compatible(self, other: Spec) -> SpecCompatibility:
+        ret: SpecCompatibility = "compatible"
 
         if (not self._skinny) and other._skinny:
             return "incompatible"
@@ -1277,7 +1337,7 @@ class Spec(object):
 
     # Check for unused prececence/token/nonterm/reduce specifications, then
     # throw a SpecError if any ambiguities exist in the grammar.
-    def _validate(self, logFile):
+    def _validate(self, logFile: Optional[str]) -> None:
         if self._verbose:
             print("Parsing.Spec: Validating grammar...")
 
@@ -1291,18 +1351,19 @@ class Spec(object):
         # Previous code guarantees that all precedence/token/nonterm names are
         # unique.  Therefore, we can build a single dictionary here that keys
         # on names.
-        used = {}
+        used: Dict[str, Any] = {}
         productions = []
         for itemSet in self._itemSets:
             for item in itemSet:
                 productions.append(item.production)
                 used[item.production.prec.name] = item.production.prec
-                for sym in [item.production.lhs] + item.production.rhs:
+                lhs: List[SymbolSpec] = [item.production.lhs]
+                for sym in lhs + item.production.rhs:
                     used[sym.name] = sym
                     used[sym.prec.name] = sym.prec
 
-                for token in item.lookahead.keys():
-                    used[token.prec.name] = token.prec
+                for token_spec in item.lookahead.keys():
+                    used[token_spec.prec.name] = token_spec.prec
 
         nUnused = 0
 
@@ -1382,7 +1443,7 @@ class Spec(object):
             sys.stdout.write("%s\n" % "\n".join(lines))
 
     # Compute the first sets for all symbols.
-    def _firstSets(self):
+    def _firstSets(self) -> None:
         # Terminals.
         # first(X) is X for terminals.
         for sym in self._tokens.values():
@@ -1396,11 +1457,11 @@ class Spec(object):
         while not done:
             done = True
             for name in self._nonterms:
-                sym = self._nonterms[name]
-                for prod in sym.productions:
+                nonterm = self._nonterms[name]
+                for prod in nonterm.productions:
                     # Merge epsilon if there is an empty production.
                     if len(prod.rhs) == 0:
-                        if not sym.firstSetMerge(epsilon):
+                        if not nonterm.firstSetMerge(epsilon):
                             done = False
 
                     # Iterate through the RHS and merge the first sets into
@@ -1409,7 +1470,7 @@ class Spec(object):
                     for elm in prod.rhs:
                         containsEpsilon = False
                         for elmSym in elm.firstSet:
-                            if not sym.firstSetMerge(elmSym):
+                            if not nonterm.firstSetMerge(elmSym):
                                 done = False
                             if elmSym == epsilon:
                                 containsEpsilon = True
@@ -1417,8 +1478,8 @@ class Spec(object):
                             break
 
     # Compute the follow sets for all symbols.
-    def _followSets(self):
-        self._startSym.followSet = [epsilon]
+    def _followSets(self) -> None:
+        self._startSym.followSet = {epsilon}
 
         # Repeat the following loop until no more symbols can be added to any
         # follow set.
@@ -1447,7 +1508,7 @@ class Spec(object):
                             break
 
     # Compute the collection of sets of LR(1) items.
-    def _items(self):
+    def _items(self) -> None:
         # Add {[S' ::= * S $., <e>]} to _itemSets.
         tItemSet = ItemSet()
         tItem = Item(self._startProd, 0, [epsilon])
@@ -1470,7 +1531,8 @@ class Spec(object):
         # indices; these itemsets are the ones referred to the key itemset.
         itemSetsHash = {tItemSet: [0]}
 
-        syms = list(self._tokens.values()) + list(self._nonterms.values())
+        syms: List[SymbolSpec] = list(self._tokens.values())
+        syms += list(self._nonterms.values())
         while len(worklist) > 0:
             if self._verbose:
                 if abs(len(worklist) - nwork) >= 10:
@@ -1520,7 +1582,7 @@ class Spec(object):
         self._itemSetsHash = itemSetsHash
 
     # Compute LR parsing tables.
-    def _lr(self):
+    def _lr(self) -> None:
         # The collection of sets of LR(1) items already exists.
         assert len(self._itemSets) > 0
         assert len(self._action) == 0
@@ -1538,6 +1600,7 @@ class Spec(object):
             sys.stdout.flush()
 
         itemSetsHash = self._itemSetsHash
+        assert itemSetsHash is not None
 
         for itemSet in self._itemSets:
             if self._verbose:
@@ -1545,7 +1608,7 @@ class Spec(object):
                 sys.stdout.flush()
             # ==============================================================
             # _action.
-            state = {}
+            state: ActionState = {}
             self._action.append(state)
             for item in itemSet:
                 # X ::= a*Ab
@@ -1577,16 +1640,16 @@ class Spec(object):
                     assert False
             # =============================================================
             # _goto.
-            state = {}
-            self._goto.append(state)
+            gstate: GotoState = {}
+            self._goto.append(gstate)
             for nonterm in self._nonterms.values():
                 itemSetB = itemSet.goto(nonterm)
                 if itemSetB in itemSetsHash:
                     for i in itemSetsHash[itemSetB]:
                         itemSetC = self._itemSets[i]
                         if itemSetC.weakCompat(itemSetB):
-                            assert nonterm not in state
-                            state[nonterm] = i
+                            assert nonterm not in gstate
+                            gstate[nonterm] = i
                             break
 
         if self._verbose:
@@ -1594,11 +1657,12 @@ class Spec(object):
             sys.stdout.flush()
 
     # Add a symbol action to state, if the action doesn't already exist.
-    def _actionAppend(self, state, sym, action):
-        assert type(state) == dict
-        assert isinstance(sym, SymbolSpec)
-        assert isinstance(action, Action)
-
+    def _actionAppend(
+        self,
+        state: dict[SymbolSpec, list[Action]],
+        sym: SymbolSpec,
+        action: Action,
+    ) -> None:
         if sym not in state:
             state[sym] = [action]
         else:
@@ -1607,7 +1671,7 @@ class Spec(object):
                 state[sym].append(action)
 
     # Look for action ambiguities and resolve them if possible.
-    def _disambiguate(self):
+    def _disambiguate(self) -> None:
         assert self._nActions == 0
         assert self._nConflicts == 0
         assert self._nImpure == 0
@@ -1703,7 +1767,11 @@ class Spec(object):
     #      "both"    : Keep both.
     #      "new"     : Keep new.
     #      "err"     : Unresolvable conflict.
-    def _resolve(self, sym, oldAct, newAct):
+    def _resolve(
+        self, sym: SymbolSpec, oldAct: Action, newAct: Action
+    ) -> ConflictResolution:
+        ret: ConflictResolution
+
         if type(oldAct) == ShiftAction:
             oldPrec = sym.prec
         elif type(oldAct) == ReduceAction:

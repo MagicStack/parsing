@@ -5,34 +5,30 @@ used in the parsing as part of the abstract syntax tree that is
 constructed in the process.
 """
 
-from parsing.interfaces import is_parser, is_symspec
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from parsing.interfaces import Parser, SymbolSpec
 
 
-class Symbol(object):
-    def __init__(self, symSpec, parser):
-        assert is_symspec(symSpec)
-        assert is_parser(parser)
+class Symbol:
+    def __init__(self, symSpec: SymbolSpec, parser: Parser):
         self.__symSpec = symSpec
         self.__parser = parser
 
-    def __repr__(self):
-        return "%r" % self.symSpec
+    def __repr__(self) -> str:
+        return repr(self.symSpec)
 
-    def __getSymSpec(self):
+    def __getSymSpec(self) -> SymbolSpec:
         return self.__symSpec
 
-    def __setSymSpec(self):
-        raise AttributeError
+    symSpec = property(__getSymSpec)
 
-    symSpec = property(__getSymSpec, __setSymSpec)
-
-    def __getParser(self):
+    def __getParser(self) -> Parser:
         return self.__parser
 
-    def __setParser(self):
-        raise AttributeError
-
-    parser = property(__getParser, __setParser)
+    parser = property(__getParser)
 
 
 class Nonterm(Symbol):
@@ -79,11 +75,10 @@ class Nonterm(Symbol):
             "%reduce id"
     """
 
-    def __init__(self, parser):
-        assert is_parser(parser)
+    def __init__(self, parser: Parser) -> None:
         Symbol.__init__(self, parser._spec._sym2spec[type(self)], parser)
 
-    def merge(self, other):
+    def merge(self, other: Nonterm) -> Nonterm:
         """
         Merging happens when there is an ambiguity in the input that allows
         non-terminals to be part of multiple overlapping series of
@@ -139,7 +134,5 @@ class Token(Symbol):
     class id(Token):
         "%token" """
 
-    def __init__(self, parser):
-        assert is_parser(parser)
+    def __init__(self, parser: Parser) -> None:
         Symbol.__init__(self, parser._spec._sym2spec[type(self)], parser)
-        self.__parser = parser

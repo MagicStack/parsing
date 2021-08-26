@@ -118,9 +118,12 @@ Following are the base classes to be subclassed by parser specifications:
   * Precedence
   * Token
   * Nonterm
-
-
 """
+
+from __future__ import annotations
+from typing import Iterator, List
+
+
 __all__ = [
     "SpecError",
     "UnexpectedToken",
@@ -161,22 +164,19 @@ from parsing.module_spec import ModuleSpecSource
 Exception = AnyException
 SyntaxError = UnexpectedToken
 
-try:
-    next
-except NameError:
-    # Python <= 2.5
-    def next(obj):
-        return obj.next()
 
-
-class Lr(object):
+class Lr:
     """
     LR(1) parser.  The Lr class uses a Spec instance in order to parse
     input that is fed to it via the token() method, and terminated via the
     eoi() method.
     """
 
-    def __init__(self, spec):
+    _spec: Spec
+    _start: list[Symbol] | None
+    _stack: list[tuple[Symbol, int]]
+
+    def __init__(self, spec: Spec) -> None:
         if __debug__:
             if type(self) == Lr:
                 assert spec.pureLR
@@ -185,23 +185,16 @@ class Lr(object):
         self.reset()
         self._verbose = False
 
-    def __getSpec(self):
+    def __getSpec(self) -> Spec:
         return self._spec
 
-    def __setSpec(self, spec):
-        raise AttributeError
+    spec = property(__getSpec)
 
-    spec = property(__getSpec, __setSpec)
-
-    def __getStart(self):
+    def __getStart(self) -> list[Symbol] | None:
         return self._start
-
-    def __setStart(self, start):
-        raise AttributeError
 
     start = property(
         __getStart,
-        __setStart,
         doc="""
 A list of parsing results.  For LR parsing, there is only ever one
 result, but for compatibility with the Glr interface, start is a
@@ -209,25 +202,25 @@ list.
 """,
     )
 
-    def __getVerbose(self):
+    def __getVerbose(self) -> bool:
         return self._verbose
 
-    def __setVerbose(self, verbose):
+    def __setVerbose(self, verbose: bool) -> None:
         assert type(verbose) == bool
         self._verbose = verbose
 
     verbose = property(__getVerbose, __setVerbose)
 
-    def reset(self):
+    def reset(self) -> None:
         self._start = None
         self._stack = [(Epsilon(self), 0)]
 
-    def token(self, token):
+    def token(self, token: Token) -> None:
         """Feed a token to the parser."""
         tokenSpec = self._spec._sym2spec[type(token)]
-        self._act(token, tokenSpec)
+        self._act(token, tokenSpec)  # type: ignore
 
-    def eoi(self):
+    def eoi(self) -> None:
         """Signal end-of-input to the parser."""
         token = EndOfInput(self)
         self.token(token)
@@ -241,7 +234,7 @@ list.
         self._start = [self._stack[1][0]]
         assert self._start[0].symSpec == self._spec._userStartSym
 
-    def _act(self, sym, symSpec):
+    def _act(self, sym: Token, symSpec: TokenSpec) -> None:
         if self._verbose:
             self._printStack()
             print("INPUT: %r" % sym)
@@ -267,7 +260,7 @@ list.
             if self._verbose:
                 self._printStack()
 
-    def _printStack(self):
+    def _printStack(self) -> None:
         print("STACK:", end=" ")
         for node in self._stack:
             print("%r" % node[0], end=" ")
@@ -284,7 +277,7 @@ list.
             )
         print()
 
-    def _reduce(self, production):
+    def _reduce(self, production: Production) -> None:
         nRhs = len(production.rhs)
         rhs = []
         for i in range(len(self._stack) - nRhs, len(self._stack)):
@@ -298,7 +291,9 @@ list.
         top = self._stack[-1]
         self._stack.append((r, self._spec._goto[top[1]][production.lhs]))
 
-    def _production(self, production, rhs):
+    def _production(
+        self, production: Production, rhs: list[Symbol]
+    ) -> Nonterm:
         sym = production.lhs.nontermType(self)
         nRhs = len(rhs)
         assert nRhs == len(production.rhs)
@@ -317,60 +312,35 @@ list.
 #
 
 
-class Gss(list):
-    """Graph-structured stack."""
-
-    def __init__(self, glr):
-        list.__init__(self)
-
-        self._glr = glr
+class GssPathStep:
+    pass
 
 
-class Gsse(object):
-    """Graph-structured stack edge."""
-
-    def __init__(self, below, above, value):
-        self.node = below
-        above._edges.append(self)
-        self.value = value
-
-    def __repr__(self):
-        return "{%r}" % self.value
-
-    def __eq__(self, other):
-        if self.node != other.node or self.value != other.value:
-            return False
-        return True
-
-
-class Gssn(object):
+class Gssn(GssPathStep):
     """Graph-structured stack node."""
 
-    def __init__(self, below, value, nextState):
-        assert isinstance(below, Gssn) or below is None
-
-        self._edges = []
-        if below is not None:
+    def __init__(
+        self, below: Gssn | None, value: Symbol | None, nextState: int
+    ) -> None:
+        self._edges: list[Gsse] = []
+        if below is not None and value is not None:
             Gsse(below, self, value)
         self.nextState = nextState
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "[%d]" % self.nextState
 
-    def __getEdge(self):
+    def __getEdge(self) -> Gsse:
         assert len(self._edges) == 1
         return self._edges[0]
 
-    def __setEdge(self):
-        raise AttributeError
+    edge = property(__getEdge)
 
-    edge = property(__getEdge, __setEdge)
-
-    def edges(self):
+    def edges(self) -> Iterator[Gsse]:
         for edge in self._edges:
             yield edge
 
-    def nodes(self):
+    def nodes(self) -> Iterator[Gssn]:
         for edge in self._edges:
             yield edge.node
 
@@ -383,18 +353,22 @@ class Gssn(object):
     #
     # <e>-grammars can cause cycles, which requires that we avoid infinite
     # recursion.
-    def paths(self, pathLen=None):
+    def paths(
+        self, pathLen: int | None = None
+    ) -> Iterator[tuple[GssPathStep, ...]]:
         assert pathLen is None or isinstance(pathLen, int) and pathLen >= 0
 
         for path in self._pathsRecurse(pathLen, []):
             yield path
 
-    def _pathsRecurse(self, pathLen, path):
+    def _pathsRecurse(
+        self, pathLen: int | None, path: list[GssPathStep]
+    ) -> Iterator[tuple[GssPathStep, ...]]:
         path.insert(0, self)
         if pathLen is None and len(self._edges) == 0:
-            yield path[:]
+            yield tuple(path[:])
         elif pathLen is not None and len(path) - 1 == pathLen * 2:
-            yield path[:]
+            yield tuple(path[:])
         else:
             for edge in self.edges():
                 # Avoid infinite recursion due to <e>-production cycles.
@@ -404,6 +378,32 @@ class Gssn(object):
                         yield x
                     path.pop(0)
         path.pop(0)
+
+
+class Gsse(GssPathStep):
+    """Graph-structured stack edge."""
+
+    def __init__(self, below: Gssn, above: Gssn, value: Symbol) -> None:
+        self.node = below
+        above._edges.append(self)
+        self.value = value
+
+    def __repr__(self) -> str:
+        return "{%r}" % self.value
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Gsse):
+            return NotImplemented
+        else:
+            return self.node == other.node and self.value == other.value
+
+
+class Gss(List[Gssn]):
+    """Graph-structured stack."""
+
+    def __init__(self, glr: Glr):
+        list.__init__(self)
+        self._glr = glr
 
 
 #
@@ -417,10 +417,7 @@ class Glr(Lr):
     that is fed to it via the token() method, and terminated via the eoi()
     method."""
 
-    def __init__(self, spec):
-        Lr.__init__(self, spec)
-
-    def reset(self):
+    def reset(self) -> None:
         self._start = None
 
         # Initialize with a stack that is in the start state.
@@ -428,20 +425,18 @@ class Glr(Lr):
         top = Gssn(None, None, 0)
         self._gss.append(top)
 
-        self._paths = []
-
-    def token(self, token):
+    def token(self, token: Token) -> None:
         """
         Feed a token to the parser."""
         if self._verbose:
             print("%s" % ("-" * 80))
             print("INPUT: %r" % token)
         tokenSpec = self._spec._sym2spec[type(token)]
-        self._act(token, tokenSpec)
+        self._act(token, tokenSpec)  # type: ignore
         if len(self._gss) == 0:
             raise UnexpectedToken("Unexpected token: %r" % token)
 
-    def eoi(self):
+    def eoi(self) -> None:
         """
         Signal end-of-input to the parser."""
         token = EndOfInput(self)
@@ -455,6 +450,7 @@ class Glr(Lr):
                 if self._verbose:
                     print("   --> accept %r" % path)
                 edge = path[1]
+                assert isinstance(edge, Gsse)
                 assert isinstance(edge.value, Nonterm)
                 assert edge.value.symSpec == self._spec._userStartSym
                 self._start.append(edge.value)
@@ -466,11 +462,11 @@ class Glr(Lr):
             print("Start: %r" % self._start)
             print("%s" % ("-" * 80))
 
-    def _act(self, sym, symSpec):
+    def _act(self, sym: Token, symSpec: TokenSpec) -> None:
         self._reductions(sym, symSpec)
         self._shifts(sym, symSpec)
 
-    def _reductions(self, sym, symSpec):
+    def _reductions(self, sym: Token, symSpec: TokenSpec) -> None:
         # epsilons is a dictionary that maps production-->[tops].  The purpose
         # is to avoid repeating the same epsilon production on a particular
         # stack top.  Ordinary productions do not require this care because we
@@ -481,7 +477,7 @@ class Glr(Lr):
             nReduces = 0
 
         # Enqueue work.
-        workQ = []
+        workQ: list[tuple[tuple[GssPathStep, ...], Production]] = []
         i = 0
         while i < len(self._gss):
             top = self._gss[i]
@@ -540,23 +536,31 @@ class Glr(Lr):
                 print("              %r" % path)
                 nReduces += 1
 
-            self._reduce(workQ, epsilons, path, production, symSpec)
+            self._glr_reduce(workQ, epsilons, path, production, symSpec)
 
         if self._verbose:
             if nReduces > 0:
                 self._printStack()
 
-    def _reduce(self, workQ, epsilons, path, production, symSpec):
+    def _glr_reduce(
+        self,
+        workQ: list[tuple[tuple[GssPathStep, ...], Production]],
+        epsilons: dict[Production, list[Gssn]],
+        path: tuple[GssPathStep, ...],
+        production: Production,
+        symSpec: SymbolSpec,
+    ) -> None:
         assert len(path[1::2]) == len(production.rhs)
 
         # Build the list of RHS semantic values to pass to the reduction
         # action.
-        rhs = [edge.value for edge in path[1::2]]
+        rhs = [edge.value for edge in path[1::2]]  # type: ignore
 
         # Call the user reduction method.
         r = self._production(production, rhs)
 
         below = path[0]
+        assert isinstance(below, Gssn)
         done = False
         for top in self._gss:
             if (
@@ -567,22 +571,24 @@ class Glr(Lr):
                 # the set of stack tops.
                 for edge in top.edges():
                     if edge.node == below:
+                        nonterm = edge.value
+                        assert isinstance(nonterm, Nonterm)
                         # There is already a below<--top link, so merge
                         # competing interpretations.
                         if self._verbose:
-                            print("   --> merge %r <--> %r" % (edge.value, r))
-                        value = production.lhs.nontermType.merge(edge.value, r)
+                            print("   --> merge %r <--> %r" % (nonterm, r))
+                        value = production.lhs.nontermType.merge(nonterm, r)
                         if self._verbose:
                             if value == edge.value:
                                 print(
                                     "             %s"
-                                    % ("-" * len("%r" % edge.value))
+                                    % ("-" * len("%r" % nonterm))
                                 )
                             else:
                                 print(
                                     "             %s      %s"
                                     % (
-                                        (" " * len("%r" % edge.value)),
+                                        (" " * len("%r" % nonterm)),
                                         "-" * len("%r" % r),
                                     )
                                 )
@@ -616,7 +622,13 @@ class Glr(Lr):
             self._enqueueLimitedReductions(workQ, epsilons, top.edge, symSpec)
 
     # Enqueue paths that incorporate edge.
-    def _enqueueLimitedReductions(self, workQ, epsilons, edge, symSpec):
+    def _enqueueLimitedReductions(
+        self,
+        workQ: list[tuple[tuple[GssPathStep, ...], Production]],
+        epsilons: dict[Production, list[Gssn]],
+        edge: Gsse,
+        symSpec: SymbolSpec,
+    ) -> None:
         gotos = self._spec._goto
 
         for top in self._gss:
@@ -633,17 +645,17 @@ class Glr(Lr):
                                 # twice.
                                 pass
                             elif action.production not in epsilons:
-                                path = [top]
+                                p = (top,)
                                 epsilons[action.production] = [top]
-                                workQ.append((path, action.production))
+                                workQ.append((p, action.production))
                                 if self._verbose:
                                     print(
                                         "   --> enqueue(d) %r"
                                         % action.production
                                     )
-                                    print("                  %r" % path)
+                                    print("                  %r" % p)
                             elif top not in epsilons[action.production]:
-                                path = [top]
+                                path = (top,)
                                 epsilons[action.production].append(top)
                                 workQ.append((path, action.production))
                                 if self._verbose:
@@ -655,17 +667,17 @@ class Glr(Lr):
                         else:
                             # Iterate over all reduction paths through stack
                             # and enqueue them if they incorporate edge.
-                            for path in top.paths(len(action.production.rhs)):
-                                if edge in path[1::2]:
-                                    workQ.append((path, action.production))
+                            for rp in top.paths(len(action.production.rhs)):
+                                if edge in rp[1::2]:
+                                    workQ.append((rp, action.production))
                                     if self._verbose:
                                         print(
                                             "   --> enqueue(f) %r"
                                             % action.production
                                         )
-                                        print("                  %r" % path)
+                                        print("                  %r" % rp)
 
-    def _shifts(self, sym, symSpec):
+    def _shifts(self, sym: Token, symSpec: TokenSpec) -> None:
         prevGss = self._gss
         self._gss = Gss(self)
 
@@ -692,7 +704,7 @@ class Glr(Lr):
             if nShifts > 0:
                 self._printStack()
 
-    def _printStack(self):
+    def _printStack(self) -> None:
         i = 0
         for top in self._gss:
             for path in top.paths():

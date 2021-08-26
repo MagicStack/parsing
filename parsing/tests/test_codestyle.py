@@ -10,7 +10,7 @@ def find_root():
     )
 
 
-class TestFlake8(unittest.TestCase):
+class TestCodeQuality(unittest.TestCase):
     def test_flake8(self):
         rootpath = find_root()
 
@@ -29,6 +29,40 @@ class TestFlake8(unittest.TestCase):
                 raise AssertionError(
                     "flake8 validation failed:\n{}".format(output)
                 )
+
+    def test_mypy(self):
+        rootpath = find_root()
+        config_path = os.path.join(rootpath, "pyproject.toml")
+        if not os.path.exists(config_path):
+            raise RuntimeError("could not locate pyproject.toml file")
+
+        try:
+            import mypy  # NoQA
+        except ImportError:
+            raise unittest.SkipTest("mypy module is missing")
+
+        try:
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "mypy",
+                    "--config-file",
+                    config_path,
+                    "parsing",
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                cwd=rootpath,
+            )
+        except subprocess.CalledProcessError as ex:
+            output = ex.stdout.decode()
+            if ex.stderr:
+                output += "\n\n" + ex.stderr.decode()
+            raise AssertionError(
+                f"mypy validation failed:\n{output}"
+            ) from None
 
 
 if __name__ == "__main__":

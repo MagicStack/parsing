@@ -23,14 +23,30 @@
 This module contains classes that are used in the specification of grammars.
 """
 
+from __future__ import annotations
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterable,
+    Mapping,
+    List,
+    Optional,
+    Tuple,
+    Type,
+)
+
 import re
 import sys
 from parsing.ast import Token, Nonterm
 from parsing.errors import SpecError
 from parsing import introspection
 
+if TYPE_CHECKING:
+    import types
 
-class Precedence(object):
+
+class Precedence:
     """
     Precedences can be associated with tokens, non-terminals, and
     productions.  Precedence isn't as important for GLR parsers as for LR
@@ -103,20 +119,24 @@ class Precedence(object):
 
     assoc_tok_re = re.compile(r"([<>=])([A-Za-z]\w*)")
 
-    def __init__(self, name, assoc, relationships):
+    def __init__(
+        self,
+        name: str,
+        assoc: str,
+        relationships: Mapping[str, str],
+    ) -> None:
         assert assoc in ["fail", "nonassoc", "left", "right", "split"]
-        assert type(relationships) == dict
 
         self.name = name
         self.assoc = assoc
         self.relationships = relationships  # Raw relationships specification.
 
         # Precedences that have equivalent precedence.
-        self.equiv = set((self,))
+        self.equiv: set[Precedence] = set((self,))
         # Precedences that have higher precedence.
-        self.dominators = set()
+        self.dominators: set[Precedence] = set()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         equiv = [prec.name for prec in self.equiv]
         equiv.sort()
         domin = [prec.name for prec in self.dominators]
@@ -129,40 +149,54 @@ class Precedence(object):
         )
 
 
-class SymbolSpec(int):
+class PrecedenceRef(Precedence):
+    def __init__(self, name: str) -> None:
+        super().__init__(name, "fail", {})
+
+
+class SymbolSpec:
     seq = 0
 
-    def __new__(cls, *args, **kwargs):
-        result = int.__new__(cls, SymbolSpec.seq)
-        result.seq = SymbolSpec.seq
-        SymbolSpec.seq += 1
-        return result
-
-    def __init__(self, name, prec):
-        assert type(name) == str
-
+    def __init__(self, name: str, prec: Precedence) -> None:
         self.name = name
         self.prec = prec
-        self.firstSet = []  # Set.
-        self.followSet = []  # Set.
+        self.firstSet: set[SymbolSpec] = set()
+        self.followSet: set[SymbolSpec] = set()
+        self.seq = SymbolSpec.seq
+        SymbolSpec.seq += 1
 
-    def __repr__(self):
-        return "%s" % self.name
+    def __hash__(self) -> int:
+        return self.seq
+
+    def __eq__(self, other: Any) -> bool:
+        if isinstance(other, SymbolSpec):
+            return self.seq == other.seq
+        else:
+            return NotImplemented
+
+    def __lt__(self, other: Any) -> bool:
+        if isinstance(other, SymbolSpec):
+            return self.seq < other.seq
+        else:
+            return NotImplemented
+
+    def __repr__(self) -> str:
+        return self.name
 
     __str__ = __repr__
 
-    def firstSetMerge(self, sym):
+    def firstSetMerge(self, sym: SymbolSpec) -> bool:
         if sym not in self.firstSet:
-            self.firstSet.append(sym)
+            self.firstSet.add(sym)
             return False
         else:
             return True
 
-    def followSetMerge(self, set):
+    def followSetMerge(self, set: Iterable[SymbolSpec]) -> bool:
         ret = True
         for sym in set:
             if sym != epsilon and sym not in self.followSet:
-                self.followSet.append(sym)
+                self.followSet.add(sym)
                 ret = False
         return ret
 
@@ -171,30 +205,36 @@ class NontermSpec(SymbolSpec):
     token_re = re.compile(r"([A-Za-z]\w*)")
     precedence_tok_re = re.compile(r"\[([A-Za-z]\w*)\]")
 
-    def __init__(self, nontermType, name, qualified, prec):
-        assert issubclass(nontermType, Nonterm)  # Add forward decl for Lyken.
-
-        SymbolSpec.__init__(self, name, prec)
-
+    def __init__(
+        self,
+        nontermType: Type[Nonterm],
+        name: str,
+        qualified: str,
+        prec: Precedence,
+    ) -> None:
+        super().__init__(name, prec)
         self.qualified = qualified
         self.nontermType = nontermType
-        self.productions = []  # Set.
+        self.productions: set[Production] = set()
 
     @classmethod
-    def from_class(cls, nt_subclass, name=None, module=None):
+    def from_class(
+        cls,
+        nt_subclass: type,
+        name: Optional[str] = None,
+        module: Optional[types.ModuleType] = None,
+    ) -> Tuple[NontermSpec, bool]:
         if name is None:
             name = nt_subclass.__name__
         if module is None:
             module_name = nt_subclass.__module__
         else:
             module_name = module.__name__
-        if nt_subclass.__doc__ is None:
-            dirtoks = ["%nonterm", name]
-        else:
+        if nt_subclass.__doc__ is not None:
             dirtoks = introspection.parse_docstring(nt_subclass.__doc__)
-        is_start = dirtoks[0] == "%start"
-        # if dirtoks[0] in SHORTHAND:
-        #    dirtoks = ['%nonterm', name]
+        else:
+            dirtoks = ("%nonterm", name)
+        is_start = dirtoks[0] == r"%start"
         symbol_name = None
         prec = None
         i = 1
@@ -207,7 +247,7 @@ class NontermSpec(SymbolSpec):
                         "Precedence must come last in "
                         "non-terminal specification: %s" % nt_subclass.__doc__
                     )
-                prec = m.group(1)
+                prec = PrecedenceRef(m.group(1))
             else:
                 m = NontermSpec.token_re.match(tok)
                 if m:
@@ -221,58 +261,76 @@ class NontermSpec(SymbolSpec):
         if symbol_name is None:
             symbol_name = name
         if prec is None:
-            prec = "none"
+            prec = PrecedenceRef("none")
 
-        # nonterm = NontermSpec(symbol_name, nt_subclass,
-        #                       "%s.%s" % (module_name, name), prec)
         nonterm = NontermSpec(
-            nt_subclass, symbol_name, "%s.%s" % (module_name, name), prec
+            nt_subclass, symbol_name, f"{module_name}.{name}", prec
         )
         return nonterm, is_start
 
 
 # AKA terminal symbol.
 class TokenSpec(SymbolSpec):
-    def __init__(self, tokenType, name, prec):
-        assert issubclass(tokenType, Token)
-        assert type(name) == str
-        assert isinstance(prec, Precedence) or type(prec) == str
-
+    def __init__(
+        self,
+        tokenType: Type[Token],
+        name: str,
+        prec: Precedence,
+    ) -> None:
         SymbolSpec.__init__(self, name, prec)
         self.tokenType = tokenType
 
 
-class Production(int):
+class Production:
     seq = 0
 
-    def __new__(cls, *args, **kwargs):
-        result = int.__new__(cls, Production.seq)
-        result.seq = Production.seq
-        Production.seq += 1
-        return result
-
-    def __init__(self, method, qualified, prec, lhs, rhs):
-        assert isinstance(prec, Precedence)
-        assert isinstance(lhs, NontermSpec)
-        if __debug__:
-            for elm in rhs:
-                assert isinstance(elm, SymbolSpec)
-
+    def __init__(
+        self,
+        method: Callable[..., Nonterm | None],
+        qualified: str,
+        prec: Precedence,
+        lhs: NontermSpec,
+        rhs: List[SymbolSpec],
+    ) -> None:
         self.method = method
         self.qualified = qualified
         self.prec = prec
         self.lhs = lhs
         self.rhs = rhs
+        self.seq = Production.seq
+        Production.seq += 1
 
-    def __getstate__(self):
+    def __hash__(self) -> int:
+        return self.seq
+
+    def __eq__(self, other: Any) -> bool:
+        if type(other) == Production:
+            return self.seq == other.seq
+        else:
+            return NotImplemented
+
+    def __lt__(self, other: Any) -> bool:
+        if type(other) == Production:
+            return self.seq < other.seq
+        else:
+            return NotImplemented
+
+    def __getstate__(
+        self,
+    ) -> Tuple[str, Precedence, NontermSpec, List[SymbolSpec], int]:
         return (self.qualified, self.prec, self.lhs, self.rhs, self.seq)
 
-    def __setstate__(self, data):
+    def __setstate__(
+        self,
+        data: Tuple[str, Precedence, NontermSpec, List[SymbolSpec], int],
+    ) -> None:
         # Convert qualified name to a function reference.
         (qualified, prec, lhs, rhs, seq) = data
         elms = qualified.split(".")
-        method = sys.modules[elms[0]]
-        for elm in elms[1:]:
+        assert len(elms) > 1
+        module = sys.modules[elms[0]]
+        method = module.__dict__[elms[1]]
+        for elm in elms[2:]:
             method = method.__dict__[elm]
 
         # Set state.
@@ -283,7 +341,7 @@ class Production(int):
         self.rhs = rhs
         self.seq = seq
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "%r ::= %s. [%s]" % (
             self.lhs,
             " ".join(["%r" % elm for elm in self.rhs]),
@@ -293,7 +351,7 @@ class Production(int):
     # Optional callback method.
     #
     # Called when a production is reduced.
-    def reduce(self, lhs, *rhs):
+    def reduce(self, lhs: NontermSpec, *rhs: SymbolSpec) -> None:
         pass
 
 
@@ -303,8 +361,8 @@ class EndOfInput(Token):
 
 
 class EndOfInputSpec(TokenSpec):
-    def __init__(self):
-        TokenSpec.__init__(self, EndOfInput, "<$>", "none")
+    def __init__(self) -> None:
+        TokenSpec.__init__(self, EndOfInput, "<$>", PrecedenceRef("none"))
 
 
 eoi = EndOfInputSpec()
@@ -316,28 +374,23 @@ class Epsilon(Token):
 
 
 class EpsilonSpec(TokenSpec):
-    def __init__(self):
-        TokenSpec.__init__(self, Epsilon, "<e>", "none")
+    def __init__(self) -> None:
+        TokenSpec.__init__(self, Epsilon, "<e>", PrecedenceRef("none"))
 
 
 epsilon = EpsilonSpec()
 
 
 class NontermStart(Nonterm):
-    def reduce(self, userStartSym, eoi):
+    def reduce(self, userStartSym: SymbolSpec, eoi: EndOfInputSpec) -> None:
         pass
 
 
-class Start(Production):
-    def __init__(self, startSym, userStartSym):
-        Production.__init__(self, None, startSym, userStartSym)
-
-
-class Action(object):
+class Action:
     """
     Abstract base class, subclassed by {Shift,Reduce}Action."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         pass
 
 
@@ -345,14 +398,14 @@ class ShiftAction(Action):
     """
     Shift action, with assocated nextState."""
 
-    def __init__(self, nextState):
+    def __init__(self, nextState: int) -> None:
         Action.__init__(self)
         self.nextState = nextState
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "[shift %r]" % self.nextState
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         if not isinstance(other, ShiftAction):
             return False
         if self.nextState != other.nextState:
@@ -364,14 +417,14 @@ class ReduceAction(Action):
     """
     Reduce action, with associated production."""
 
-    def __init__(self, production):
+    def __init__(self, production: Production) -> None:
         Action.__init__(self)
         self.production = production
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "[reduce %r]" % self.production
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         if not isinstance(other, ReduceAction):
             return False
         if self.production != other.production:
