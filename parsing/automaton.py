@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import (
     TYPE_CHECKING,
     Any,
-    ClassVar,
+    Callable,
     Dict,
     Iterable,
     Iterator,
@@ -16,16 +16,21 @@ from typing import (
     Type,
 )
 
+import collections
+import inspect
+import time
 import types
 import pickle
 import sys
 
 from parsing.errors import SpecError
+from parsing import interfaces
 from parsing import introspection
 from parsing import module_spec
 from parsing.ast import Symbol
 from parsing.grammar import (
-    Precedence,
+    Item,
+    PrecedenceSpec,
     PrecedenceRef,
     Production,
     TokenSpec,
@@ -63,265 +68,176 @@ if TYPE_CHECKING:
     GotoState = Dict[SymbolSpec, int]
 
 
-class StringSpec:
-    cache: ClassVar[dict[Tuple[SymbolSpec, ...], set[SymbolSpec]]] = {}
-
-    def __init__(self, ss: Iterable[SymbolSpec]) -> None:
-        self.s = s = tuple(ss)
-        if s in StringSpec.cache:
-            self.firstSet = StringSpec.cache[s]
-        else:
-            # Calculate the first set for the string encoded by the s vector.
-            self.firstSet = set()
-            mergeEpsilon = True
-            for sym in self.s:
-                hasEpsilon = False
-                for elm in sym.firstSet:
-                    if elm == epsilon:
-                        hasEpsilon = True
-                    else:
-                        self.firstSet.add(elm)
-                if not hasEpsilon:
-                    mergeEpsilon = False
-                    break
-            # Merge epsilon if it was in the first set of every symbol.
-            if mergeEpsilon:
-                self.firstSet.add(epsilon)
-
-            # Cache the result.
-            StringSpec.cache[s] = self.firstSet
+_firstSetCache: dict[Tuple[SymbolSpec, ...], frozenset[SymbolSpec]] = {}
 
 
-class Item:
-    hash: int
-    production: Production
-    dotPos: int
-    lookahead: Dict[SymbolSpec, SymbolSpec]
+def computeFirstSet(s: Tuple[SymbolSpec, ...]) -> frozenset[SymbolSpec]:
+    firstSet = _firstSetCache.get(s)
+    if firstSet is None:
+        # Calculate the first set for the string encoded by the s vector.
+        result = set()
+        mergeEpsilon = True
+        for sym in s:
+            hasEpsilon = False
+            for elm in sym.firstSet:
+                if elm == epsilon:
+                    hasEpsilon = True
+                else:
+                    result.add(elm)
+            if not hasEpsilon:
+                mergeEpsilon = False
+                break
+        # Merge epsilon if it was in the first set of every symbol.
+        if mergeEpsilon:
+            result.add(epsilon)
 
-    def __init__(
-        self,
-        production: Production,
-        dotPos: int,
-        lookahead: Iterable[SymbolSpec],
-    ) -> None:
-        assert 0 <= dotPos <= len(production.rhs)
-        self.hash = (dotPos * Production.seq) + production.seq
-        self.production = production
-        self.dotPos = dotPos
-        self.lookahead = dict(zip(lookahead, lookahead))
+        # Cache the result.
+        _firstSetCache[s] = firstSet = frozenset(result)
 
-    def __hash__(self) -> int:
-        return self.hash
+    return firstSet
 
-    def __eq__(self, other: Any) -> bool:
-        if type(other) == Item:
-            return self.hash == other.hash
-        else:
-            return NotImplemented
 
-    def __lt__(self, other: Any) -> bool:
-        if type(other) == Item:
-            return self.hash < other.hash
-        else:
-            return NotImplemented
+class ItemSet:
+    def __init__(self, items: Iterable[Tuple[Item, set[SymbolSpec]]]) -> None:
+        self._kernel: Dict[Item, set[SymbolSpec]] = {}
+        self._added: Dict[Item, set[SymbolSpec]] = {}
+        self._symMap: dict[SymbolSpec, set[Item]] = {}
+        self._all: collections.ChainMap[
+            Item, set[SymbolSpec]
+        ] = collections.ChainMap(self._kernel, self._added)
+
+        for item, lookahead in items:
+            assert item.production.lhs.name == "<S>" or item.dotPos != 0
+            self._kernel[item] = set(lookahead)
+            sym = item.symbol
+            if sym is not None:
+                if sym in self._symMap:
+                    self._symMap[sym].add(item)
+                else:
+                    self._symMap[sym] = {item}
+
+        self._hash = hash(frozenset(self._kernel))
 
     def __repr__(self) -> str:
+        kernel = ", ".join(
+            self._item_repr(i, la) for i, la in self._kernel.items()
+        )
+        added = ", ".join(
+            self._item_repr(i, la) for i, la in self._added.items()
+        )
+        return "ItemSet(kernel: %s, added: %r)" % (kernel, added)
+
+    def _item_repr(self, item: Item, lookahead: set[SymbolSpec]) -> str:
         strs = []
-        strs.append("[%r ::=" % self.production.lhs)
-        assert self.dotPos <= len(self.production.rhs)
+        strs.append("[%r ::=" % item.production.lhs)
+        assert item.dotPos <= len(item.production.rhs)
         i = 0
-        while i < self.dotPos:
-            strs.append(" %r" % self.production.rhs[i])
+        while i < item.dotPos:
+            strs.append(" %r" % item.production.rhs[i])
             i += 1
         strs.append(" *")
-        while i < len(self.production.rhs):
-            strs.append(" %r" % self.production.rhs[i])
+        while i < len(item.production.rhs):
+            strs.append(" %r" % item.production.rhs[i])
             i += 1
-        syms = [sym for sym in self.lookahead.keys()]
-        syms.sort()
         strs.append(
             "., %s] [%s]"
             % (
-                "/".join(["%r" % sym for sym in syms]),
-                self.production.prec.name,
+                "/".join(["%r" % sym for sym in lookahead]),
+                item.production.prec.name,
             )
         )
 
         return "".join(strs)
-
-    def lr0__repr__(self) -> str:
-        strs = []
-        strs.append("%r ::=" % self.production.lhs)
-        assert self.dotPos <= len(self.production.rhs)
-        i = 0
-        while i < self.dotPos:
-            strs.append(" %r" % self.production.rhs[i])
-            i += 1
-        strs.append(" *")
-        while i < len(self.production.rhs):
-            strs.append(" %r" % self.production.rhs[i])
-            i += 1
-        strs.append(". [%s]" % self.production.prec.name)
-
-        return "".join(strs)
-
-    def lookaheadInsert(self, sym: SymbolSpec) -> None:
-        self.lookahead[sym] = sym
-
-    def lookaheadDisjoint(self, other: Item) -> bool:
-        sLookahead = self.lookahead
-        oLookahead = other.lookahead
-
-        for sSym in sLookahead.keys():
-            if sSym in oLookahead:
-                return False
-
-        for oSym in oLookahead.keys():
-            if oSym in sLookahead:
-                return False
-
-        return True
-
-
-class ItemSet:
-    def __init__(self) -> None:
-        self._kernel: Dict[Item, Item] = {}
-        self._added: Dict[Item, Item] = {}
-
-    def __repr__(self) -> str:
-        return "ItemSet(kernel: %s, added: %r)" % (
-            ", ".join(repr(item) for item in sorted(self._kernel)),
-            ", ".join(repr(item) for item in sorted(self._added)),
-        )
 
     def __len__(self) -> int:
         return len(self._kernel)
 
     def __hash__(self) -> int:
-        # This works because integers never overflow, and addition is
-        # transitive.
-        ret = 0
-        for item in self._kernel:
-            ret += item.hash
-        return ret
+        return self._hash
 
     def __eq__(self, other: Any) -> bool:
-        if len(self) != len(other):
-            return False
-        for sItem in self._kernel:
-            if sItem not in other:
-                return False
-        return True
+        if type(other) == ItemSet:
+            return self._kernel.keys() == other._kernel.keys()
+        else:
+            return NotImplemented
 
     def __iter__(self) -> Iterator[Item]:
-        for item in self._kernel:
-            assert item.production.lhs.name == "<S>" or item.dotPos != 0
-            yield item
-        for item in self._added:
-            assert item.dotPos == 0
-            assert item.production.lhs.name != "<S>"
-            yield item
+        return iter(self._all)
 
-    # Merge a kernel item.
-    def append(self, item: Item) -> None:
-        assert item.production.lhs.name == "<S>" or item.dotPos != 0
-
-        if item in self:
-            self._kernel[item].lookahead.update(item.lookahead)
-        else:
-            tItem = Item(
-                item.production, item.dotPos, list(item.lookahead.keys())
-            )
-            self._kernel[tItem] = tItem
+    def items(self) -> Iterator[Tuple[Item, set[SymbolSpec]]]:
+        return iter(self._all.items())
 
     # Merge an added item.
-    def addedAppend(self, item: Item) -> bool:
+    def addedAppend(self, item: Item, lookahead: Iterable[SymbolSpec]) -> bool:
         assert item.dotPos == 0
         assert item.production.lhs.name != "<S>"
 
-        if item in self._added:
-            lookahead = self._added[item].lookahead
-            oldLen = len(lookahead)
-            lookahead.update(item.lookahead)
-            return oldLen != len(lookahead)
+        curLookahead = self._added.get(item)
+        if curLookahead is not None:
+            oldLen = len(curLookahead)
+            curLookahead.update(lookahead)
+            return oldLen != len(curLookahead)
         else:
-            self._added[item] = item
+            self._added[item] = set(lookahead)
+            sym = item.symbol
+            if sym is not None:
+                if sym in self._symMap:
+                    self._symMap[sym].add(item)
+                else:
+                    self._symMap[sym] = {item}
             return True
 
     # Given a list of items, compute their closure and merge the results into
     # the set of added items.
-    def _closeItems(self, items: List[Item]) -> None:
+    def _closeItems(
+        self, items: Iterable[Tuple[Item, Iterable[SymbolSpec]]]
+    ) -> None:
         # Iterate over the items until no more can be added to the closure.
+        worklist = list(items)
         i = 0
-        while i < len(items):
-            item = items[i]
-            rhs = item.production.rhs
-            dotPos = item.dotPos
-            if dotPos < len(rhs):
-                lhs = rhs[dotPos]
-                if isinstance(lhs, NontermSpec):
-                    for lookahead in tuple(item.lookahead.keys()):
-                        string = StringSpec(rhs[dotPos + 1 :] + [lookahead])
-                        for prod in lhs.productions:
-                            tItem = Item(prod, 0, string.firstSet)
-                            if self.addedAppend(tItem):
-                                items.append(tItem)
+        while i < len(worklist):
+            item, lookahead = worklist[i]
+            sym = item.symbol
+            if isinstance(sym, NontermSpec):
+                prefix = item.production.rhs[item.dotPos + 1 :]
+                for lookaheadSym in lookahead:
+                    firstSet = computeFirstSet(prefix + (lookaheadSym,))
+                    for prod in sym.productions:
+                        tItem = prod.item(0)
+                        if self.addedAppend(tItem, firstSet):
+                            worklist.append((tItem, firstSet))
             i += 1
 
     # Calculate and merge the kernel's transitive closure.
     def closure(self) -> None:
-        items = []
-        for item in self._kernel:
-            rhs = item.production.rhs
-            dotPos = item.dotPos
-            if dotPos < len(rhs):
-                lhs = rhs[dotPos]
-                if isinstance(lhs, NontermSpec):
-                    for lookahead in item.lookahead.keys():
-                        string = StringSpec(rhs[dotPos + 1 :] + [lookahead])
-                        for prod in lhs.productions:
-                            tItem = Item(prod, 0, string.firstSet)
-                            if self.addedAppend(tItem):
-                                items.append(tItem)
-        self._closeItems(items)
+        self._closeItems(self._kernel.items())
 
     # Calculate the kernel of the goto set, given a particular symbol.
-    def goto(self, sym: SymbolSpec) -> ItemSet:
-        ret = ItemSet()
-        for item in self:
-            rhs = item.production.rhs
-            dotPos = item.dotPos
-            if dotPos < len(rhs) and rhs[dotPos] == sym:
-                tItem = Item(
-                    item.production, dotPos + 1, list(item.lookahead.keys())
-                )
-                ret.append(tItem)
-        return ret
+    def goto(self, sym: SymbolSpec) -> ItemSet | None:
+        items = self._symMap.get(sym)
+        if items:
+            return ItemSet(
+                (i.production.item(i.dotPos + 1), self._all[i]) for i in items
+            )
+        else:
+            return None
 
     # Merge the kernel of other into this ItemSet, then update the closure.
     # It is not sufficient to copy other's added items, since other has not
     # computed its closure.
     def merge(self, other: ItemSet) -> bool:
         items = []
-        for item in other._kernel:
-            if item in self:
-                lookahead = self._kernel[item].lookahead
-                tLookahead = []
-                for sym in item.lookahead.keys():
-                    if sym not in lookahead:
-                        lookahead[sym] = sym
-                        tLookahead.append(sym)
-                if len(tLookahead) > 0:
-                    tItem = Item(item.production, item.dotPos, tLookahead)
-                    items.append(tItem)
-            else:
-                tItem = Item(
-                    item.production, item.dotPos, list(item.lookahead.keys())
-                )
-                self._kernel[tItem] = tItem
-                items.append(tItem)
+        for item, oLookahead in other._kernel.items():
+            sLookahead = self._kernel.get(item)
+            # The other ItemSet must be weakly compatible with this one,
+            # so it must share the kernel.
+            assert sLookahead is not None
+            tLookahead = oLookahead - sLookahead
+            if tLookahead:
+                sLookahead.update(tLookahead)
+                items.append((item, tLookahead))
 
-        if len(items) > 0:
+        if items:
             self._closeItems(items)
             return True
         else:
@@ -335,42 +251,56 @@ class ItemSet:
         if len(self) != len(other):
             return False
         pairs = []
-        for sItem in self._kernel:
-            if sItem not in other:
+        for sItem, sLookahead in self._kernel.items():
+            if sItem not in other._kernel:
                 return False
-            oItem = other._kernel[sItem]
-            pairs.append((sItem, oItem))
+            oLookahead = other._kernel[sItem]
+            pairs.append((sLookahead, oLookahead))
 
         # Check for lookahead compatibility.
         for i in range(len(pairs) - 1):
-            iPair = pairs[i]
-            isItem = iPair[0]
-            ioItem = iPair[1]
+            isLookahead, ioLookahead = pairs[i]
             for j in range(i + 1, len(pairs)):
-                jPair = pairs[j]
-                jsItem = jPair[0]
-                joItem = jPair[1]
-
-                if isItem.lookaheadDisjoint(
-                    joItem
-                ) and ioItem.lookaheadDisjoint(jsItem):
-                    pass
-                elif not isItem.lookaheadDisjoint(jsItem):
-                    pass
-                elif not ioItem.lookaheadDisjoint(joItem):
-                    pass
-                else:
+                jsLookahead, joLookahead = pairs[j]
+                if (
+                    (
+                        not isLookahead.isdisjoint(joLookahead)
+                        or not ioLookahead.isdisjoint(jsLookahead)
+                    )
+                    and isLookahead.isdisjoint(jsLookahead)
+                    and ioLookahead.isdisjoint(joLookahead)
+                ):
                     return False
         return True
 
 
-class Spec:
+class Spec(interfaces.Spec):
     """
     The Spec class contains the read-only data structures that the Parser
     class needs in order to parse input.  Parser generation results in a
     Spec instance, which can then be shared by multiple Parser instances."""
 
     _sym2spec: dict[type[Symbol], SymbolSpec]
+
+    def sym_spec(self, sym: Symbol) -> SymbolSpec:
+        return self._sym2spec[type(sym)]
+
+    def actions(self) -> list[ActionState]:
+        return self._action
+
+    def goto(self) -> list[GotoState]:
+        return self._goto
+
+    def start_sym(self) -> NontermSpec:
+        return self._userStartSym
+
+    @property
+    def pureLR(self) -> int:
+        return self._nConflicts + self._nImpure == 0
+
+    @property
+    def conflicts(self) -> int:
+        return self._nConflicts
 
     def __init__(
         self,
@@ -409,8 +339,8 @@ class Spec:
         self._verbose = verbose
 
         # Default (no) precedence.
-        self._none = Precedence("none", "fail", {})
-        self._split = Precedence("split", "split", {})
+        self._none = PrecedenceSpec("none", "fail", {})
+        self._split = PrecedenceSpec("split", "split", {})
 
         # Symbols are maintained as two separate sets so that non-terminals and
         # terminals (tokens) can be operated on separately where needed.
@@ -517,8 +447,18 @@ class Spec:
             f"{__name__}.NontermStart.reduce",
             self._none,
             self._startSym,
-            [self._userStartSym, eoi],
+            (self._userStartSym, eoi),
         )
+
+        # Augment grammar with a special start symbol and production:
+        #
+        #   <S> ::= S <$>.
+        self._startSym.productions.add(self._startProd)
+        self._nonterms["<S>"] = self._startSym
+        self._productions.append(self._startProd)
+
+        # Resolve references in the grammar specification.
+        self._references(logFile, graphFile)
 
         # Everything below this point is computed from the above (once
         # introspection is complete).
@@ -539,17 +479,7 @@ class Spec:
         self._nImpure = 0  # Number of LR impurities (does not affect GLR).
 
         # Generate parse tables.
-        self._prepare(pickleFile, pickleMode, logFile, graphFile)
-
-    def __getPureLR(self) -> int:
-        return self._nConflicts + self._nImpure == 0
-
-    pureLR = property(__getPureLR)
-
-    def __getConflicts(self) -> int:
-        return self._nConflicts
-
-    conflicts = property(__getConflicts)
+        self._prepare(pickleFile, pickleMode, logFile)
 
     def __repr__(self) -> str:
         if self._skinny:
@@ -572,22 +502,18 @@ class Spec:
 
         lines.append("Tokens:")
         sym: SymbolSpec
-        tokens = [sym for sym in self._tokens.values()]
-        for token in sorted(tokens):
+        for token in self._tokens.values():
             lines.append("  %r %r" % (token, token.prec))
             lines.append("    First set: %r" % token.firstSet)
             lines.append("    Follow set: %r" % token.followSet)
 
         lines.append("Non-terminals:")
-        nonterms = [sym for sym in self._nonterms.values()]
-        for sym in sorted(nonterms):
+        for sym in self._nonterms.values():
             lines.append("  %r %r" % (sym, sym.prec))
             lines.append("    First set: %r" % sym.firstSet)
             lines.append("    Follow set: %r" % sym.followSet)
             lines.append("    Productions:")
-            prods = list(sym.productions)
-            prods.sort()
-            for prod in prods:
+            for prod in sym.productions:
                 lines.append("      %r" % prod)
 
         lines.append("Item sets:")
@@ -629,20 +555,15 @@ class Spec:
                 "  State %d:%s"
                 % (i, ("", " (start state)")[self._startState == i])
             )
-            items = [item for item in self._itemSets[i]]
-            items.sort()
-            for item in items:
+            for item in self._itemSets[i]:
                 lines.append(
                     " %s%s" % (" " * (len("%d" % i) + 9), item.lr0__repr__())
                 )
             lines.append("    Goto:")
-            syms = [sym for sym in self._goto[i]]
-            for sym in sorted(syms):
+            for sym in self._goto[i]:
                 lines.append("    %15r : %r" % (sym, self._goto[i][sym]))
             lines.append("    Action:")
-            syms = [sym for sym in self._action[i]]
-            syms.sort()
-            for sym in syms:
+            for sym in self._action[i]:
                 for action in self._action[i][sym]:
                     conflict = "   "
                     for other in self._action[i][sym]:
@@ -678,23 +599,15 @@ class Spec:
         pickleFile: Optional[str],
         pickleMode: PickleMode,
         logFile: Optional[str],
-        graphFile: Optional[str],
     ) -> None:
         """
         Compile the specification into data structures that can be used by
         the Parser class for parsing."""
-        # Augment grammar with a special start symbol and production:
-        #
-        #   <S> ::= S <$>.
-        self._startSym.productions.add(self._startProd)
-        self._nonterms["<S>"] = self._startSym
-        self._productions.append(self._startProd)
-
-        # Resolve references in the grammar specification.
-        self._references(logFile, graphFile)
-
         # Check for a compatible pickle.
         compat = self._unpickle(pickleFile, pickleMode)
+
+        if self._verbose and compat in ["itemsets", "incompatible"]:
+            start = time.monotonic()
 
         if compat == "incompatible":
             # Create the collection of sets of LR(1) items.
@@ -722,6 +635,12 @@ class Spec:
             try:
                 self._validate(logFile)
             finally:
+                if self._verbose:
+                    print(
+                        "Parsing.Spec: LR(1) parser generation took "
+                        f"{(time.monotonic() - start) * 1000:.1f} milliseconds"
+                    )
+                sys.stdout.flush()
                 # Pickle the spec, if method parameters so dictate, even if
                 # there were validation errors, so that the pickle might be
                 # used in part during later runs.
@@ -832,69 +751,71 @@ class Spec:
 
         # Resolve Nonterm-->{Nonterm,Token,Precedence} references.
         for nonterm in self._nonterms.values():
-            d = nonterm.nontermType.__dict__
-            for k in d:
-                v = d[k]
-                if isinstance(v, types.FunctionType) and isinstance(
-                    v.__doc__, str
-                ):
-                    dirtoks = introspection.parse_docstring(v.__doc__)
-                    if dirtoks[0] == "%reduce":
-                        rhs: List[SymbolSpec] = []
-                        rhs_terms = []
-                        prec = None
-                        for i in range(1, len(dirtoks)):
-                            tok = dirtoks[i]
-                            m = NontermSpec.token_re.match(tok)
+            methods = inspect.getmembers(
+                nonterm.nontermType,
+                predicate=lambda f: (
+                    inspect.isfunction(f) and isinstance(f.__doc__, str)
+                ),
+            )
+            for k, v in methods:
+                dirtoks = introspection.parse_docstring(v.__doc__)
+                if dirtoks[0] == "%reduce":
+                    rhs: List[SymbolSpec] = []
+                    rhs_terms = []
+                    prec = None
+                    for i in range(1, len(dirtoks)):
+                        tok = dirtoks[i]
+                        m = NontermSpec.token_re.match(tok)
+                        if m:
+                            # Symbolic reference.
+                            if tok in self._tokens:
+                                rhs.append(self._tokens[tok])
+                                rhs_terms.append(self._tokens[tok])
+                            elif tok in self._nonterms:
+                                rhs.append(self._nonterms[tok])
+                            else:
+                                raise SpecError(
+                                    "Unknown symbol '%s' in reduction "
+                                    "specification: %s" % (tok, v.__doc__)
+                                )
+                        else:
+                            m = NontermSpec.precedence_tok_re.match(tok)
                             if m:
-                                # Symbolic reference.
-                                if tok in self._tokens:
-                                    rhs.append(self._tokens[tok])
-                                    rhs_terms.append(self._tokens[tok])
-                                elif tok in self._nonterms:
-                                    rhs.append(self._nonterms[tok])
-                                else:
+                                # Precedence.
+                                if i < len(dirtoks) - 1:
                                     raise SpecError(
-                                        "Unknown symbol '%s' in reduction "
-                                        "specification: %s" % (tok, v.__doc__)
+                                        "Precedence must come last in "
+                                        "reduction specification: %s"
+                                        % v.__doc__
                                     )
-                            else:
-                                m = NontermSpec.precedence_tok_re.match(tok)
-                                if m:
-                                    # Precedence.
-                                    if i < len(dirtoks) - 1:
-                                        raise SpecError(
-                                            "Precedence must come last in "
-                                            "reduction specification: %s"
-                                            % v.__doc__
-                                        )
-                                    if m.group(1) not in self._precedences:
-                                        raise SpecError(
-                                            "Unknown precedence in reduction "
-                                            "specification: %s" % v.__doc__
-                                        )
-                                    prec = self._precedences[m.group(1)]
+                                if m.group(1) not in self._precedences:
+                                    raise SpecError(
+                                        "Unknown precedence in reduction "
+                                        "specification: %s" % v.__doc__
+                                    )
+                                prec = self._precedences[m.group(1)]
 
-                        if prec is None:
+                    if prec is None:
+                        # Inherit the non-terminal's precedence.
+                        if rhs_terms:
+                            # Inherit the precedence of the last terminal
+                            # symbol in rhs
+                            prec = rhs_terms[-1].prec
+                        else:
                             # Inherit the non-terminal's precedence.
-                            if rhs_terms:
-                                # Inherit the precedence of the last terminal
-                                # symbol in rhs
-                                prec = rhs_terms[-1].prec
-                            else:
-                                # Inherit the non-terminal's precedence.
-                                prec = nonterm.prec
+                            prec = nonterm.prec
 
-                        prod = Production(
-                            v,
-                            "%s.%s" % (nonterm.qualified, k),
-                            prec,
-                            nonterm,
-                            rhs,
-                        )
-                        assert prod not in nonterm.productions
-                        nonterm.productions.add(prod)
-                        self._productions.append(prod)
+                    prod = Production(
+                        v,
+                        "%s.%s" % (nonterm.qualified, k),
+                        prec,
+                        nonterm,
+                        tuple(rhs),
+                    )
+                    assert prod not in nonterm.productions
+                    nonterm.productions.add(prod)
+                    self._productions.append(prod)
+
         if self._verbose:
             ntokens = len(self._tokens) - 1
             nnonterms = len(self._nonterms) - 1
@@ -1354,15 +1275,15 @@ class Spec:
         used: Dict[str, Any] = {}
         productions = []
         for itemSet in self._itemSets:
-            for item in itemSet:
+            for item, lookahead in itemSet.items():
                 productions.append(item.production)
                 used[item.production.prec.name] = item.production.prec
-                lhs: List[SymbolSpec] = [item.production.lhs]
+                lhs: Tuple[SymbolSpec, ...] = (item.production.lhs,)
                 for sym in lhs + item.production.rhs:
                     used[sym.name] = sym
                     used[sym.prec.name] = sym.prec
 
-                for token_spec in item.lookahead.keys():
+                for token_spec in lookahead:
                     used[token_spec.prec.name] = token_spec.prec
 
         nUnused = 0
@@ -1510,11 +1431,12 @@ class Spec:
     # Compute the collection of sets of LR(1) items.
     def _items(self) -> None:
         # Add {[S' ::= * S $., <e>]} to _itemSets.
-        tItemSet = ItemSet()
-        tItem = Item(self._startProd, 0, [epsilon])
-        tItemSet.append(tItem)
+        tItem = self._startProd.item(0)
+        tLookahead: set[SymbolSpec] = {epsilon}
+        tItemSet = ItemSet(((tItem, tLookahead),))
         tItemSet.closure()
         self._itemSets.append(tItemSet)
+        itemSetCount = 1
 
         # List of state numbers that need to be processed.
         worklist = [0]
@@ -1533,48 +1455,48 @@ class Spec:
 
         syms: List[SymbolSpec] = list(self._tokens.values())
         syms += list(self._nonterms.values())
-        while len(worklist) > 0:
+        while worklist:
             if self._verbose:
                 if abs(len(worklist) - nwork) >= 10:
                     nwork = len(worklist)
-                    sys.stdout.write(
-                        "[%d/%d]" % (len(worklist), len(self._itemSets))
-                    )
+                    sys.stdout.write("[%d/%d]" % (len(worklist), itemSetCount))
                     sys.stdout.flush()
 
             i = worklist.pop(0)
             itemSet = self._itemSets[i]
             for sym in syms:
                 gotoSet = itemSet.goto(sym)
-                if len(gotoSet) > 0:
-                    merged = False
-                    if gotoSet in itemSetsHash:
-                        for j in itemSetsHash[gotoSet]:
-                            mergeSet = self._itemSets[j]
-                            if mergeSet.weakCompat(gotoSet):
-                                merged = True
-                                if mergeSet.merge(gotoSet):
-                                    # Process worklist in MRU order.  This
-                                    # causes a depth-first traversal.
-                                    if j in worklist:
-                                        worklist.remove(j)
-                                    else:
-                                        if self._verbose:
-                                            sys.stdout.write(".")
-                                            sys.stdout.flush()
-                                    worklist.insert(0, j)
-                                break
-                    if not merged:
-                        gotoSet.closure()
-                        worklist.append(len(self._itemSets))
-                        if gotoSet not in itemSetsHash:
-                            itemSetsHash[gotoSet] = [len(self._itemSets)]
-                        else:
-                            itemSetsHash[gotoSet].append(len(self._itemSets))
-                        self._itemSets.append(gotoSet)
-                        if self._verbose:
-                            sys.stdout.write("+")
-                            sys.stdout.flush()
+                if gotoSet is None:
+                    continue
+                merged = False
+                if gotoSet in itemSetsHash:
+                    for j in itemSetsHash[gotoSet]:
+                        mergeSet = self._itemSets[j]
+                        if mergeSet.weakCompat(gotoSet):
+                            merged = True
+                            if mergeSet.merge(gotoSet):
+                                # Process worklist in MRU order.  This
+                                # causes a depth-first traversal.
+                                if j in worklist:
+                                    worklist.remove(j)
+                                else:
+                                    if self._verbose:
+                                        sys.stdout.write(".")
+                                        sys.stdout.flush()
+                                worklist.insert(0, j)
+                            break
+                if not merged:
+                    gotoSet.closure()
+                    worklist.append(itemSetCount)
+                    if gotoSet not in itemSetsHash:
+                        itemSetsHash[gotoSet] = [itemSetCount]
+                    else:
+                        itemSetsHash[gotoSet].append(itemSetCount)
+                    self._itemSets.append(gotoSet)
+                    itemSetCount += 1
+                    if self._verbose:
+                        sys.stdout.write("+")
+                        sys.stdout.flush()
 
         if self._verbose:
             sys.stdout.write("\n")
@@ -1610,12 +1532,13 @@ class Spec:
             # _action.
             state: ActionState = {}
             self._action.append(state)
-            for item in itemSet:
+            for item, lookahead in itemSet.items():
                 # X ::= a*Ab
-                if item.dotPos < len(item.production.rhs):
-                    sym = item.production.rhs[item.dotPos]
+                sym = item.symbol
+                if sym is not None:
                     if isinstance(sym, TokenSpec):
                         itemSetB = itemSet.goto(sym)
+                        assert itemSetB is not None
                         for i in itemSetsHash[itemSetB]:
                             itemSetC = self._itemSets[i]
                             if itemSetC.weakCompat(itemSetB):
@@ -1631,26 +1554,26 @@ class Spec:
                         assert len(item.production.rhs) == 2
                         self._startState = len(self._action) - 1
                 # X ::= a*
-                elif item.dotPos == len(item.production.rhs):
-                    for lookahead in item.lookahead.keys():
-                        self._actionAppend(
-                            state, lookahead, ReduceAction(item.production)
-                        )
                 else:
-                    assert False
+                    for lookaheadSym in lookahead:
+                        self._actionAppend(
+                            state, lookaheadSym, ReduceAction(item.production)
+                        )
             # =============================================================
             # _goto.
             gstate: GotoState = {}
             self._goto.append(gstate)
             for nonterm in self._nonterms.values():
                 itemSetB = itemSet.goto(nonterm)
-                if itemSetB in itemSetsHash:
-                    for i in itemSetsHash[itemSetB]:
-                        itemSetC = self._itemSets[i]
-                        if itemSetC.weakCompat(itemSetB):
-                            assert nonterm not in gstate
-                            gstate[nonterm] = i
-                            break
+                if itemSetB is not None:
+                    refs = itemSetsHash.get(itemSetB)
+                    if refs:
+                        for i in refs:
+                            itemSetC = self._itemSets[i]
+                            if itemSetC.weakCompat(itemSetB):
+                                assert nonterm not in gstate
+                                gstate[nonterm] = i
+                                break
 
         if self._verbose:
             sys.stdout.write("\n")

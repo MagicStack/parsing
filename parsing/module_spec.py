@@ -5,13 +5,19 @@ classes in a module.
 from __future__ import annotations
 
 import types
-from parsing.grammar import Precedence, PrecedenceRef, TokenSpec, NontermSpec
-from parsing.ast import Token, Nonterm
+from parsing.interfaces import SpecSource
+from parsing.grammar import (
+    PrecedenceSpec,
+    PrecedenceRef,
+    TokenSpec,
+    NontermSpec,
+)
+from parsing.ast import Token, Nonterm, Precedence
 from parsing import introspection
 from parsing.errors import SpecError
 
 
-class ModuleSpecSource:
+class ModuleSpecSource(SpecSource):
     """
     ModuleSpecSource scans one or several modules for subclasses of relevant
     classes (Precedence, Token, Nonterm) with specific docstrings.
@@ -31,13 +37,13 @@ class ModuleSpecSource:
                     dirtoks = introspection.parse_docstring(v.__doc__)
                     items.append((module, k, v, dirtoks))
         self.named_objs = items
-        self._cache_precedences: list[Precedence] | None = None
+        self._cache_precedences: list[PrecedenceSpec] | None = None
         self._cache_tokens: list[TokenSpec] | None = None
         self._cache_nonterminals: tuple[
             list[NontermSpec], NontermSpec
         ] | None = None
 
-    def get_precedences(self) -> list[Precedence]:
+    def get_precedences(self) -> list[PrecedenceSpec]:
         if self._cache_precedences is not None:
             return self._cache_precedences
         result = []
@@ -54,7 +60,7 @@ class ModuleSpecSource:
                 i = 1
                 while i < len(dirtoks):
                     tok = dirtoks[i]
-                    m = Precedence.assoc_tok_re.match(tok)
+                    m = PrecedenceSpec.assoc_tok_re.match(tok)
                     if m:
                         # Precedence relationship.
                         if m.group(2) in relationships:
@@ -79,7 +85,7 @@ class ModuleSpecSource:
                             )
                     i += 1
 
-                prec = Precedence(name, dirtoks[0][1:], relationships)
+                prec = PrecedenceSpec(name, dirtoks[0][1:], relationships)
                 result.append(prec)
         self._cache_precedences = result
         return result
@@ -123,7 +129,7 @@ class ModuleSpecSource:
         if self._cache_nonterminals is not None:
             return self._cache_nonterminals
         result = []
-        startSym = None
+        startSym: NontermSpec | None = None
         for module, k, v, dirtoks in self.named_objs:
             if issubclass(v, Nonterm) and dirtoks[0] in ["%start", "%nonterm"]:
                 nonterm, is_start = NontermSpec.from_class(v)

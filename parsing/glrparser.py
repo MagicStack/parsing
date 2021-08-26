@@ -32,11 +32,10 @@ class Gssn(GssPathStep):
     def __repr__(self) -> str:
         return "[%d]" % self.nextState
 
-    def __getEdge(self) -> Gsse:
+    @property
+    def edge(self) -> Gsse:
         assert len(self._edges) == 1
         return self._edges[0]
-
-    edge = property(__getEdge)
 
     def edges(self) -> Iterator[Gsse]:
         for edge in self._edges:
@@ -100,14 +99,6 @@ class Gsse(GssPathStep):
             return self.node == other.node and self.value == other.value
 
 
-class Gss(List[Gssn]):
-    """Graph-structured stack."""
-
-    def __init__(self, glr: Glr):
-        list.__init__(self)
-        self._glr = glr
-
-
 #
 # End graph-structured stack (GSS) classes.
 # ========================================================================
@@ -123,17 +114,17 @@ class Glr(Lr):
         self._start = None
 
         # Initialize with a stack that is in the start state.
-        self._gss = Gss(self)
+        self._gss: List[Gssn] = []
         top = Gssn(None, None, 0)
         self._gss.append(top)
 
     def token(self, token: Token) -> None:
         """
         Feed a token to the parser."""
-        if self._verbose:
+        if self.verbose:
             print("%s" % ("-" * 80))
             print("INPUT: %r" % token)
-        tokenSpec = self._spec._sym2spec[type(token)]
+        tokenSpec = self._spec.sym_spec(token)
         self._act(token, tokenSpec)  # type: ignore
         if len(self._gss) == 0:
             raise UnexpectedToken("Unexpected token: %r" % token)
@@ -149,21 +140,20 @@ class Glr(Lr):
         for top in self._gss:
             for path in top.paths():
                 assert len(path) == 5
-                if self._verbose:
+                if self.verbose:
                     print("   --> accept %r" % path)
                 edge = path[1]
                 assert isinstance(edge, Gsse)
                 assert isinstance(edge.value, Nonterm)
                 assert (
-                    self._spec._sym2spec[type(edge.value)]
-                    == self._spec._userStartSym
+                    self._spec.sym_spec(edge.value) == self._start_sym
                 )
                 self._start.append(edge.value)
 
         if len(self._start) == 0:
             raise UnexpectedToken("Unexpected end of input")
 
-        if self._verbose:
+        if self.verbose:
             print("Start: %r" % self._start)
             print("%s" % ("-" * 80))
 
@@ -178,7 +168,7 @@ class Glr(Lr):
         # can notice when a path has already been used for a production.
         epsilons = {}
 
-        if self._verbose:
+        if self.verbose:
             nReduces = 0
 
         # Enqueue work.
@@ -186,11 +176,11 @@ class Glr(Lr):
         i = 0
         while i < len(self._gss):
             top = self._gss[i]
-            if symSpec not in self._spec._action[top.nextState]:
+            if symSpec not in self._action[top.nextState]:
                 # Unexpected token for this stack.
                 self._gss.pop(i)
             else:
-                for action in self._spec._action[top.nextState][symSpec]:
+                for action in self._action[top.nextState][symSpec]:
                     if type(action) == ReduceAction:
                         if len(action.production.rhs) == 0:
                             if action.production not in epsilons:
@@ -200,7 +190,7 @@ class Glr(Lr):
                                 path = [p for p in top.paths(0)][0]
                                 epsilons[action.production] = [top]
                                 workQ.append((path, action.production))
-                                if self._verbose:
+                                if self.verbose:
                                     print(
                                         "   --> enqueue(a) %r"
                                         % action.production
@@ -213,7 +203,7 @@ class Glr(Lr):
                                 path = [p for p in top.paths(0)][0]
                                 epsilons[action.production].append(top)
                                 workQ.append((path, action.production))
-                                if self._verbose:
+                                if self.verbose:
                                     print(
                                         "   --> enqueue(b) %r"
                                         % action.production
@@ -224,7 +214,7 @@ class Glr(Lr):
                             # and enqueue them.
                             for path in top.paths(len(action.production.rhs)):
                                 workQ.append((path, action.production))
-                                if self._verbose:
+                                if self.verbose:
                                     print(
                                         "   --> enqueue(c) %r"
                                         % action.production
@@ -236,14 +226,14 @@ class Glr(Lr):
         while len(workQ) > 0:
             (path, production) = workQ.pop(0)
 
-            if self._verbose:
+            if self.verbose:
                 print("   --> reduce %r" % production)
                 print("              %r" % path)
                 nReduces += 1
 
             self._glr_reduce(workQ, epsilons, path, production, symSpec)
 
-        if self._verbose:
+        if self.verbose:
             if nReduces > 0:
                 self._printStack()
 
@@ -268,10 +258,7 @@ class Glr(Lr):
         assert isinstance(below, Gssn)
         done = False
         for top in self._gss:
-            if (
-                top.nextState
-                == self._spec._goto[below.nextState][production.lhs]
-            ):
+            if top.nextState == self._goto[below.nextState][production.lhs]:
                 # top is compatible with the reduction result we want to add to
                 # the set of stack tops.
                 for edge in top.edges():
@@ -280,10 +267,10 @@ class Glr(Lr):
                         assert isinstance(nonterm, Nonterm)
                         # There is already a below<--top link, so merge
                         # competing interpretations.
-                        if self._verbose:
+                        if self.verbose:
                             print("   --> merge %r <--> %r" % (nonterm, r))
                         value = production.lhs.nontermType.merge(nonterm, r)
-                        if self._verbose:
+                        if self.verbose:
                             if value == edge.value:
                                 print(
                                     "             %s"
@@ -303,7 +290,7 @@ class Glr(Lr):
                 if not done:
                     # Create a new below<--top link.
                     edge = Gsse(below, top, r)
-                    if self._verbose:
+                    if self.verbose:
                         print("   --> shift(b) %r" % top)
 
                     # Enqueue reduction paths that were created as a result of
@@ -315,14 +302,12 @@ class Glr(Lr):
                 break
         if not done:
             # There is no compatible stack top, so create a new one.
-            top = Gssn(
-                below, r, self._spec._goto[below.nextState][production.lhs]
-            )
+            top = Gssn(below, r, self._goto[below.nextState][production.lhs])
             self._gss.append(top)
-            if self._verbose:
+            if self.verbose:
                 print(
                     "   --> shift(c) %r"
-                    % self._spec._goto[below.nextState][production.lhs]
+                    % self._goto[below.nextState][production.lhs]
                 )
             self._enqueueLimitedReductions(workQ, epsilons, top.edge, symSpec)
 
@@ -334,11 +319,11 @@ class Glr(Lr):
         edge: Gsse,
         symSpec: SymbolSpec,
     ) -> None:
-        gotos = self._spec._goto
+        gotos = self._goto
 
         for top in self._gss:
-            if symSpec in self._spec._action[top.nextState]:
-                for action in self._spec._action[top.nextState][symSpec]:
+            if symSpec in self._action[top.nextState]:
+                for action in self._action[top.nextState][symSpec]:
                     if type(action) == ReduceAction:
                         if len(action.production.rhs) == 0:
                             if (
@@ -353,7 +338,7 @@ class Glr(Lr):
                                 p = (top,)
                                 epsilons[action.production] = [top]
                                 workQ.append((p, action.production))
-                                if self._verbose:
+                                if self.verbose:
                                     print(
                                         "   --> enqueue(d) %r"
                                         % action.production
@@ -363,7 +348,7 @@ class Glr(Lr):
                                 path = (top,)
                                 epsilons[action.production].append(top)
                                 workQ.append((path, action.production))
-                                if self._verbose:
+                                if self.verbose:
                                     print(
                                         "   --> enqueue(e) %r"
                                         % action.production
@@ -375,7 +360,7 @@ class Glr(Lr):
                             for rp in top.paths(len(action.production.rhs)):
                                 if edge in rp[1::2]:
                                     workQ.append((rp, action.production))
-                                    if self._verbose:
+                                    if self.verbose:
                                         print(
                                             "   --> enqueue(f) %r"
                                             % action.production
@@ -384,14 +369,14 @@ class Glr(Lr):
 
     def _shifts(self, sym: Token, symSpec: TokenSpec) -> None:
         prevGss = self._gss
-        self._gss = Gss(self)
+        self._gss = []
 
-        if self._verbose:
+        if self.verbose:
             nShifts = 0
 
         for topA in prevGss:
-            if symSpec in self._spec._action[topA.nextState]:
-                for action in self._spec._action[topA.nextState][symSpec]:
+            if symSpec in self._action[topA.nextState]:
+                for action in self._action[topA.nextState][symSpec]:
                     if type(action) == ShiftAction:
                         merged = False
                         for topB in self._gss:
@@ -402,10 +387,10 @@ class Glr(Lr):
                         if not merged:
                             top = Gssn(topA, sym, action.nextState)
                             self._gss.append(top)
-                            if self._verbose:
+                            if self.verbose:
                                 print("   --> shift(a) %d" % action.nextState)
                                 nShifts += 1
-        if self._verbose:
+        if self.verbose:
             if nShifts > 0:
                 self._printStack()
 

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from parsing.ast import Symbol, Nonterm, Token
-from parsing.automaton import Spec
-from parsing import interfaces
 from parsing.errors import UnexpectedToken
 from parsing.grammar import (
     Production,
@@ -11,10 +9,12 @@ from parsing.grammar import (
     Epsilon,
     ShiftAction,
     ReduceAction,
+    SymbolSpec,
 )
+from parsing.interfaces import Parser, Spec
 
 
-class Lr:
+class Lr(Parser):
     """
     LR(1) parser.  The Lr class uses a Spec instance in order to parse
     input that is fed to it via the token() method, and terminated via the
@@ -29,13 +29,16 @@ class Lr:
         if __debug__:
             if type(self) == Lr:
                 assert spec.pureLR
-        assert spec._nConflicts == 0
+        assert spec.conflicts == 0
         self._spec = spec
+        self._action = spec.actions()
+        self._goto = spec.goto()
+        self._start_sym = spec.start_sym()
         self.reset()
-        self._verbose = False
+        self.verbose = False
 
-    def sym_spec(self, sym: Symbol) -> interfaces.SymbolSpec:
-        return self._spec._sym2spec[type(sym)]
+    def sym_spec(self, sym: Symbol) -> SymbolSpec:
+        return self._spec.sym_spec(sym)
 
     @property
     def spec(self) -> Spec:
@@ -48,22 +51,13 @@ class Lr:
         list."""
         return self._start
 
-    def __getVerbose(self) -> bool:
-        return self._verbose
-
-    def __setVerbose(self, verbose: bool) -> None:
-        assert type(verbose) == bool
-        self._verbose = verbose
-
-    verbose = property(__getVerbose, __setVerbose)
-
     def reset(self) -> None:
         self._start = None
         self._stack = [(Epsilon(self), 0)]
 
     def token(self, token: Token) -> None:
         """Feed a token to the parser."""
-        tokenSpec = self._spec._sym2spec[type(token)]
+        tokenSpec = self._spec.sym_spec(token)
         self._act(token, tokenSpec)  # type: ignore
 
     def eoi(self) -> None:
@@ -72,32 +66,29 @@ class Lr:
         self.token(token)
 
         assert self._stack[-1][0] == token  # <$>.
-        if self._verbose:
+        if self.verbose:
             self._printStack()
             print("   --> accept")
         self._stack.pop()
 
         self._start = [self._stack[1][0]]
-        assert (
-            self._spec._sym2spec[type(self._start[0])]
-            == self._spec._userStartSym
-        )
+        assert self._spec.sym_spec(self._start[0]) == self._start_sym
 
     def _act(self, sym: Token, symSpec: TokenSpec) -> None:
-        if self._verbose:
+        if self.verbose:
             self._printStack()
-            print("INPUT: %r" % sym)
+            print("INPUT: %r" % symSpec)
 
         while True:
             top = self._stack[-1]
-            if symSpec not in self._spec._action[top[1]]:
+            if symSpec not in self._action[top[1]]:
                 raise UnexpectedToken("Unexpected token: %r" % sym)
 
-            actions = self._spec._action[top[1]][symSpec]
+            actions = self._action[top[1]][symSpec]
             assert len(actions) == 1
             action = actions[0]
 
-            if self._verbose:
+            if self.verbose:
                 print("   --> %r" % action)
             if type(action) == ShiftAction:
                 self._stack.append((sym, action.nextState))
@@ -106,21 +97,23 @@ class Lr:
                 assert type(action) == ReduceAction
                 self._reduce(action.production)
 
-            if self._verbose:
+            if self.verbose:
                 self._printStack()
 
     def _printStack(self) -> None:
         print("STACK:", end=" ")
         for node in self._stack:
-            print("%r" % node[0], end=" ")
+            symSpec = self._spec.sym_spec(node[0])
+            print("%r" % symSpec, end=" ")
         print()
         print("      ", end=" ")
         for node in self._stack:
+            symSpec = self._spec.sym_spec(node[0])
             print(
                 "%r%s"
                 % (
                     node[1],
-                    (" " * (len("%r" % node[0]) - len("%r" % node[1]))),
+                    (" " * (len("%r" % symSpec) - len("%r" % node[1]))),
                 ),
                 end=" ",
             )
@@ -138,7 +131,7 @@ class Lr:
             self._stack.pop()
 
         top = self._stack[-1]
-        self._stack.append((r, self._spec._goto[top[1]][production.lhs]))
+        self._stack.append((r, self._goto[top[1]][production.lhs]))
 
     def _production(
         self, production: Production, rhs: list[Symbol]

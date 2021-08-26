@@ -124,21 +124,23 @@ from __future__ import annotations
 
 
 __all__ = (
-    "SpecError",
-    "UnexpectedToken",
+    "Glr",
+    "Lr",
+    "ModuleSpecSource",
     "Nonterm",
+    "Parser",
     "Precedence",
     "Spec",
+    "SpecError",
+    "SpecSource",
+    "UnexpectedToken",
     "Token",
-    "Lr",
-    "Glr",
-    "ModuleSpecSource",
 )
 
-from parsing.ast import Nonterm, Token
 from parsing.automaton import Spec
-from parsing.grammar import Precedence
+from parsing.ast import Nonterm, Token, Precedence
 from parsing.errors import SpecError, UnexpectedToken
+from parsing.interfaces import Parser, SpecSource
 from parsing.module_spec import ModuleSpecSource
 from parsing.lrparser import Lr
 from parsing.glrparser import Glr

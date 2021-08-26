@@ -24,7 +24,7 @@ class ParsingError(AnyException):
     """
 
 
-class SpecError(ValueError, AnyException):
+class SpecError(AnyException):
     """
     Specification error exception.  SpecError arises when the Spec
     introspection machinery detects an error either during docstring parsing
@@ -32,7 +32,7 @@ class SpecError(ValueError, AnyException):
     """
 
 
-class UnexpectedToken(ParsingError, SyntaxError):
+class UnexpectedToken(ParsingError):
     """
     Parser syntax error.  UnexpectedToken arises when a Parser instance detects
     a syntax error according to the Spec it is using, for the input being

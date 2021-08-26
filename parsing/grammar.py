@@ -28,9 +28,11 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    ClassVar,
+    Dict,
     Iterable,
-    Mapping,
     List,
+    Mapping,
     Optional,
     Tuple,
     Type,
@@ -46,78 +48,10 @@ if TYPE_CHECKING:
     import types
 
 
-class Precedence:
-    """
-    Precedences can be associated with tokens, non-terminals, and
-    productions.  Precedence isn't as important for GLR parsers as for LR
-    parsers, since GLR parsing allows for parse-time resolution of
-    ambiguity.  Still, precedence can be useful for reducing the volume of
-    ambiguities that must be dealt with at run-time.
-
-    There are five precedence types: %fail, %nonassoc, %left, %right, and
-    %split.  Each precedence can have relationships with other precedences:
-    <, >, or =.  These relationships specify a directed acyclic graph (DAG),
-    which is used to compute the transitive closures of relationships among
-    precedences.  If no path exists between two precedences that are
-    compared during conflict resolution, parser generation fails.  < and >
-    are reflexive; it does not matter which is used.  Conceptually, the =
-    relationship causes precedences to share a node in the DAG.
-
-    During conflict resolution, an error results if no path exists in the
-    DAG between the precedences under consideration.  When such a path
-    exists, the highest precedence non-terminal or production takes
-    precedence.  Associativity only comes into play for shift/reduce
-    conflicts, where the terminal and the production have equivalent
-    precedences (= relationship).  In this case, the non-terminal's
-    associativity determines how the conflict is resolved.
-
-    The %fail and %split associativities are special because they can be
-    mixed with other associativities.  During conflict resolution, if
-    another action has non-%fail associativity, then the %fail (lack of)
-    associativity is overridden.  Similarly, %split associativity overrides
-    any other associativity.  In contrast, any mixture of associativity
-    between %nonassoc/%left/%right causes an unresolvable conflict.
-
-        %fail : Any conflict is a parser-generation-time error.
-
-                A pre-defined precedence, [none], is provided.  It has
-                %fail associativity, and has no pre-defined precedence
-                relationships.
-
-    %nonassoc : Resolve shift/reduce conflicts by removing both
-                possibilities, thus making conflicts a parse-time error.
-
-        %left : Resolve shift/reduce conflicts by reducing.
-
-        %right : Resolve shift/reduce conflicts by shifting.
-
-        %split : Do not resolve conflicts; the GLR algorithm will split
-                the parse stack when necessary.
-
-                A pre-defined precedence, [split], is provided.  It has
-                %split associativity, and has no pre-defined precedence
-                relationships.
-
-    By default, all symbols have [none] precedence.  Each production
-    inherits the precedence of its left-hand-side nonterminal's precedence
-    unless a precedence is manually specified for the production.
-
-    Following are some examples of how to specify precedence classes:
-
-    class P1(Parsing.Precedence):
-        "%split p1"
-
-    class p2(Parsing.Precedence):
-        "%left" # Name implicitly same as class name.
-
-    class P3(Parsing.Precedence):
-        "%left p3 >p2" # No whitespace is allowed between > and p2.
-
-    class P4(Parsing.Precedence):
-        "%left p4 =p3" # No whitespace is allowed between = and p3.
-    """
-
-    assoc_tok_re = re.compile(r"([<>=])([A-Za-z]\w*)")
+class PrecedenceSpec:
+    assoc_tok_re: ClassVar[re.Pattern[str]] = re.compile(
+        r"([<>=])([A-Za-z]\w*)"
+    )
 
     def __init__(
         self,
@@ -132,9 +66,9 @@ class Precedence:
         self.relationships = relationships  # Raw relationships specification.
 
         # Precedences that have equivalent precedence.
-        self.equiv: set[Precedence] = set((self,))
+        self.equiv: set[PrecedenceSpec] = set((self,))
         # Precedences that have higher precedence.
-        self.dominators: set[Precedence] = set()
+        self.dominators: set[PrecedenceSpec] = set()
 
     def __repr__(self) -> str:
         equiv = [prec.name for prec in self.equiv]
@@ -149,41 +83,28 @@ class Precedence:
         )
 
 
-class PrecedenceRef(Precedence):
+class PrecedenceRef(PrecedenceSpec):
     def __init__(self, name: str) -> None:
         super().__init__(name, "fail", {})
 
 
 class SymbolSpec:
-    seq = 0
+    name: str
+    prec: PrecedenceSpec
+    firstSet: set[SymbolSpec]
+    followSet: set[SymbolSpec]
 
-    def __init__(self, name: str, prec: Precedence) -> None:
+    def __init__(self, name: str, prec: PrecedenceSpec) -> None:
         self.name = name
         self.prec = prec
-        self.firstSet: set[SymbolSpec] = set()
-        self.followSet: set[SymbolSpec] = set()
-        self.seq = SymbolSpec.seq
-        SymbolSpec.seq += 1
-
-    def __hash__(self) -> int:
-        return self.seq
-
-    def __eq__(self, other: Any) -> bool:
-        if isinstance(other, SymbolSpec):
-            return self.seq == other.seq
-        else:
-            return NotImplemented
-
-    def __lt__(self, other: Any) -> bool:
-        if isinstance(other, SymbolSpec):
-            return self.seq < other.seq
-        else:
-            return NotImplemented
+        self.firstSet = set()
+        self.followSet = set()
 
     def __repr__(self) -> str:
         return self.name
 
-    __str__ = __repr__
+    def __str__(self) -> str:
+        return repr(self)
 
     def firstSetMerge(self, sym: SymbolSpec) -> bool:
         if sym not in self.firstSet:
@@ -202,15 +123,17 @@ class SymbolSpec:
 
 
 class NontermSpec(SymbolSpec):
-    token_re = re.compile(r"([A-Za-z]\w*)")
-    precedence_tok_re = re.compile(r"\[([A-Za-z]\w*)\]")
+    token_re: ClassVar[re.Pattern[str]] = re.compile(r"([A-Za-z]\w*)")
+    precedence_tok_re: ClassVar[re.Pattern[str]] = re.compile(
+        r"\[([A-Za-z]\w*)\]"
+    )
 
     def __init__(
         self,
         nontermType: Type[Nonterm],
         name: str,
         qualified: str,
-        prec: Precedence,
+        prec: PrecedenceSpec,
     ) -> None:
         super().__init__(name, prec)
         self.qualified = qualified
@@ -275,71 +198,101 @@ class TokenSpec(SymbolSpec):
         self,
         tokenType: Type[Token],
         name: str,
-        prec: Precedence,
+        prec: PrecedenceSpec,
     ) -> None:
         super().__init__(name, prec)
         self.tokenType = tokenType
 
 
-class Production:
-    seq = 0
+class Item:
+    production: Production
+    dotPos: int
+    symbol: Optional[SymbolSpec]
 
+    def __init__(
+        self,
+        production: Production,
+        dotPos: int,
+    ) -> None:
+        self.production = production
+        self.dotPos = dotPos
+        rhsLen = len(production.rhs)
+        if dotPos == rhsLen:
+            self.symbol = None
+        elif dotPos < rhsLen:
+            self.symbol = production.rhs[dotPos]
+        else:
+            raise AssertionError("dotPos outside of RHS!")
+
+    def __repr__(self) -> str:
+        strs = []
+        strs.append("[%r ::=" % self.production.lhs)
+        assert self.dotPos <= len(self.production.rhs)
+        i = 0
+        while i < self.dotPos:
+            strs.append(" %r" % self.production.rhs[i])
+            i += 1
+        strs.append(" *")
+        while i < len(self.production.rhs):
+            strs.append(" %r" % self.production.rhs[i])
+            i += 1
+        strs.append(".] [%s]" % (self.production.prec.name,))
+
+        return "".join(strs)
+
+    def lr0__repr__(self) -> str:
+        strs = []
+        strs.append("%r ::=" % self.production.lhs)
+        assert self.dotPos <= len(self.production.rhs)
+        i = 0
+        while i < self.dotPos:
+            strs.append(" %r" % self.production.rhs[i])
+            i += 1
+        strs.append(" *")
+        while i < len(self.production.rhs):
+            strs.append(" %r" % self.production.rhs[i])
+            i += 1
+        strs.append(". [%s]" % self.production.prec.name)
+
+        return "".join(strs)
+
+
+_item_cache: dict[tuple[Production, int], Item] = {}
+
+
+class Production:
     def __init__(
         self,
         method: Callable[..., Nonterm | None],
         qualified: str,
-        prec: Precedence,
+        prec: PrecedenceSpec,
         lhs: NontermSpec,
-        rhs: List[SymbolSpec],
+        rhs: Tuple[SymbolSpec, ...],
     ) -> None:
         self.method = method
         self.qualified = qualified
         self.prec = prec
         self.lhs = lhs
         self.rhs = rhs
-        self.seq = Production.seq
-        Production.seq += 1
-
-    def __hash__(self) -> int:
-        return self.seq
-
-    def __eq__(self, other: Any) -> bool:
-        if type(other) == Production:
-            return self.seq == other.seq
-        else:
-            return NotImplemented
-
-    def __lt__(self, other: Any) -> bool:
-        if type(other) == Production:
-            return self.seq < other.seq
-        else:
-            return NotImplemented
 
     def __getstate__(
         self,
-    ) -> Tuple[str, Precedence, NontermSpec, List[SymbolSpec], int]:
-        return (self.qualified, self.prec, self.lhs, self.rhs, self.seq)
+    ) -> Tuple[str, PrecedenceSpec, NontermSpec, Tuple[SymbolSpec, ...]]:
+        return (self.qualified, self.prec, self.lhs, self.rhs)
 
     def __setstate__(
         self,
-        data: Tuple[str, Precedence, NontermSpec, List[SymbolSpec], int],
+        data: Tuple[str, PrecedenceSpec, NontermSpec, Tuple[SymbolSpec, ...]],
     ) -> None:
         # Convert qualified name to a function reference.
-        (qualified, prec, lhs, rhs, seq) = data
-        elms = qualified.split(".")
+        (self.qualified, self.prec, self.lhs, self.rhs) = data
+        elms = self.qualified.split(".")
         assert len(elms) > 1
         module = sys.modules[elms[0]]
         method = module.__dict__[elms[1]]
         for elm in elms[2:]:
             method = method.__dict__[elm]
-
-        # Set state.
         self.method = method
-        self.qualified = qualified
-        self.prec = prec
-        self.lhs = lhs
-        self.rhs = rhs
-        self.seq = seq
 
     def __repr__(self) -> str:
         return "%r ::= %s. [%s]" % (
@@ -347,6 +300,14 @@ class Production:
             " ".join(["%r" % elm for elm in self.rhs]),
             self.prec.name,
         )
+
+    def item(self, dotPos: int) -> Item:
+        key = (self, dotPos)
+        item = _item_cache.get(key)
+        if item is None:
+            item = Item(self, dotPos)
+            _item_cache[key] = item
+        return item
 
     # Optional callback method.
     #
@@ -430,3 +391,7 @@ class ReduceAction(Action):
         if self.production != other.production:
             return False
         return True
+
+
+ActionState = Dict[SymbolSpec, List[Action]]
+GotoState = Dict[SymbolSpec, int]
