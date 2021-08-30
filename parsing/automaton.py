@@ -311,6 +311,7 @@ class Spec(interfaces.Spec):
         logFile: Optional[str] = None,
         graphFile: Optional[str] = None,
         verbose: bool = False,
+        unpickleHook: Callable[[Spec, SpecCompatibility], None] | None = None,
     ) -> None:
         """
         modules : Either a single module, or a list of modules, wherein to
@@ -479,7 +480,7 @@ class Spec(interfaces.Spec):
         self._nImpure = 0  # Number of LR impurities (does not affect GLR).
 
         # Generate parse tables.
-        self._prepare(pickleFile, pickleMode, logFile)
+        self._prepare(pickleFile, pickleMode, logFile, unpickleHook)
 
     def __repr__(self) -> str:
         if self._skinny:
@@ -599,12 +600,15 @@ class Spec(interfaces.Spec):
         pickleFile: Optional[str],
         pickleMode: PickleMode,
         logFile: Optional[str],
+        unpickleHook: Callable[[Spec, SpecCompatibility], None] | None = None,
     ) -> None:
         """
         Compile the specification into data structures that can be used by
         the Parser class for parsing."""
         # Check for a compatible pickle.
         compat = self._unpickle(pickleFile, pickleMode)
+        if unpickleHook is not None:
+            unpickleHook(self, compat)
 
         if self._verbose and compat in ["itemsets", "incompatible"]:
             start = time.monotonic()
