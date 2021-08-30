@@ -277,7 +277,7 @@ class TokenSpec(SymbolSpec):
         name: str,
         prec: Precedence,
     ) -> None:
-        SymbolSpec.__init__(self, name, prec)
+        super().__init__(name, prec)
         self.tokenType = tokenType
 
 
@@ -362,7 +362,7 @@ class EndOfInput(Token):
 
 class EndOfInputSpec(TokenSpec):
     def __init__(self) -> None:
-        TokenSpec.__init__(self, EndOfInput, "<$>", PrecedenceRef("none"))
+        super().__init__(EndOfInput, "<$>", PrecedenceRef("none"))
 
 
 eoi = EndOfInputSpec()
@@ -375,7 +375,7 @@ class Epsilon(Token):
 
 class EpsilonSpec(TokenSpec):
     def __init__(self) -> None:
-        TokenSpec.__init__(self, Epsilon, "<e>", PrecedenceRef("none"))
+        super().__init__(Epsilon, "<e>", PrecedenceRef("none"))
 
 
 epsilon = EpsilonSpec()
@@ -399,7 +399,7 @@ class ShiftAction(Action):
     Shift action, with assocated nextState."""
 
     def __init__(self, nextState: int) -> None:
-        Action.__init__(self)
+        super().__init__()
         self.nextState = nextState
 
     def __repr__(self) -> str:
@@ -418,7 +418,7 @@ class ReduceAction(Action):
     Reduce action, with associated production."""
 
     def __init__(self, production: Production) -> None:
-        Action.__init__(self)
+        super().__init__()
         self.production = production
 
     def __repr__(self) -> str:

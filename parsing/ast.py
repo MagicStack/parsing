@@ -20,15 +20,13 @@ class Symbol:
     def __repr__(self) -> str:
         return repr(self.symSpec)
 
-    def __getSymSpec(self) -> SymbolSpec:
+    @property
+    def symSpec(self) -> SymbolSpec:
         return self.__symSpec
 
-    symSpec = property(__getSymSpec)
-
-    def __getParser(self) -> Parser:
+    @property
+    def parser(self) -> Parser:
         return self.__parser
-
-    parser = property(__getParser)
 
 
 class Nonterm(Symbol):
@@ -76,7 +74,7 @@ class Nonterm(Symbol):
     """
 
     def __init__(self, parser: Parser) -> None:
-        Symbol.__init__(self, parser._spec._sym2spec[type(self)], parser)
+        Symbol.__init__(self, parser.sym_spec(self), parser)
 
     def merge(self, other: Nonterm) -> Nonterm:
         """
@@ -135,4 +133,4 @@ class Token(Symbol):
         "%token" """
 
     def __init__(self, parser: Parser) -> None:
-        Symbol.__init__(self, parser._spec._sym2spec[type(self)], parser)
+        Symbol.__init__(self, parser.sym_spec(self), parser)

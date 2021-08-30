@@ -9,24 +9,12 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from typing import Protocol
-    from parsing.ast import Token
-    from parsing.automaton import Spec
+    from parsing.ast import Symbol, Token
     from parsing.grammar import NontermSpec, Precedence, TokenSpec
-
-    class Parser(Protocol):
-        _spec: Spec
-
-        def token(self, token: Token) -> None:
-            ...
-
-        def eoi(
-            self,
-        ) -> None:
-            ...
 
     class SymbolSpec(Protocol):
         name: str
-        prec: str
+        prec: Precedence
 
     class SpecSource(Protocol):
         def get_precedences(self) -> list[Precedence]:
@@ -36,4 +24,14 @@ if TYPE_CHECKING:
             ...
 
         def get_nonterminals(self) -> tuple[list[NontermSpec], NontermSpec]:
+            ...
+
+    class Parser(Protocol):
+        def sym_spec(self, sym: Symbol) -> SymbolSpec:
+            ...
+
+        def token(self, token: Token) -> None:
+            ...
+
+        def eoi(self) -> None:
             ...
