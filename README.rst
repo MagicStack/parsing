@@ -1,11 +1,7 @@
-.. image:: https://travis-ci.org/sprymix/parsing.svg?branch=master
-    :target: https://travis-ci.org/sprymix/parsing
-
-
 Parsing
 =======
 
-The Parsing module implements an LR(1) parser generator, as well as the
+The ``parsing`` module implements an LR(1) parser generator, as well as the
 runtime support for using a generated parser, via the Lr and Glr parser
 drivers.  There is no special parser generator input file format, but the
 parser generator still needs to know what classes/methods correspond to
@@ -27,18 +23,19 @@ exist in a true LR(1) parser.  For more information on the algorithm, see::
     Acta Informatica 7, 249-268 (1977)
 
 Parsing table generation requires non-trivial amounts of time for large
-grammars.  Internal pickling support makes it possible to cache the most
-recent version of the parsing table on disk, and use the table if the
-current parser specification is still compatible with the one that was used
-to generate the pickled parsing table.  Since the compatibility checking is
-quite fast, even for large grammars, this removes the need to use the
-standard code generation method that is used by most parser generators.
+grammars, however it is still quite fast.  Internal pickling support makes
+it possible to cache the most recent version of the parsing table on disk,
+and use the table if the current parser specification is still compatible
+with the one that was used to generate the pickled parsing table.  Since
+the compatibility checking is quite fast, even for large grammars, this
+removes the need to use the standard code generation method that is used
+by most parser generators.
 
-Parser specifications are encapsulated by the Spec class.  Parser instances
-use Spec instances, but are themselves based on separate classes.  This
-allows multiple parser instances to exist simultaneously, without requiring
-multiple copies of the parsing tables.  There are two separate parser driver
-classes:
+Parser specifications are encapsulated by the ``Spec`` class.  Parser
+instances use ``Spec`` instances, but are themselves based on separate
+classes.  This allows multiple parser instances to exist simultaneously,
+without requiring multiple copies of the parsing tables.  There are two
+separate parser driver classes:
 
 Lr:
     Standard Characteristic Finite State Machine (CFSM) driver, based on

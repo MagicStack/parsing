@@ -135,8 +135,10 @@ __all__ = (
     "SpecSource",
     "UnexpectedToken",
     "Token",
+    "__version__",
 )
 
+from parsing._version import __version__
 from parsing.automaton import Spec
 from parsing.ast import Nonterm, Token, Precedence
 from parsing.errors import SpecError, UnexpectedToken
