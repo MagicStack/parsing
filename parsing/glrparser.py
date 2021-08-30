@@ -132,7 +132,7 @@ class Glr(Lr):
     def eoi(self) -> None:
         """
         Signal end-of-input to the parser."""
-        token = EndOfInput(self)
+        token = EndOfInput()
         self.token(token)
 
         # Gather the start symbols from the stacks.

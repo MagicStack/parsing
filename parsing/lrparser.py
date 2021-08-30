@@ -9,7 +9,6 @@ from parsing.grammar import (
     Epsilon,
     ShiftAction,
     ReduceAction,
-    SymbolSpec,
 )
 from parsing.interfaces import Parser, Spec
 
@@ -37,9 +36,6 @@ class Lr(Parser):
         self.reset()
         self.verbose = False
 
-    def sym_spec(self, sym: Symbol) -> SymbolSpec:
-        return self._spec.sym_spec(sym)
-
     @property
     def spec(self) -> Spec:
         return self._spec
@@ -53,7 +49,7 @@ class Lr(Parser):
 
     def reset(self) -> None:
         self._start = None
-        self._stack = [(Epsilon(self), 0)]
+        self._stack = [(Epsilon(), 0)]
 
     def token(self, token: Token) -> None:
         """Feed a token to the parser."""
@@ -62,7 +58,7 @@ class Lr(Parser):
 
     def eoi(self) -> None:
         """Signal end-of-input to the parser."""
-        token = EndOfInput(self)
+        token = EndOfInput()
         self.token(token)
 
         assert self._stack[-1][0] == token  # <$>.
@@ -136,7 +132,7 @@ class Lr(Parser):
     def _production(
         self, production: Production, rhs: list[Symbol]
     ) -> Nonterm:
-        sym = production.lhs.nontermType(self)
+        sym = production.lhs.nontermType()
         nRhs = len(rhs)
         assert nRhs == len(production.rhs)
         r = production.method(sym, *rhs)

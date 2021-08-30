@@ -6,28 +6,10 @@ constructed in the process.
 """
 
 from __future__ import annotations
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from parsing.grammar import SymbolSpec
-    from parsing.interfaces import Parser
 
 
 class Symbol:
-    def __init__(self, symSpec: SymbolSpec, parser: Parser):
-        self.__symSpec = symSpec
-        self.__parser = parser
-
-    def __repr__(self) -> str:
-        return repr(self.symSpec)
-
-    @property
-    def symSpec(self) -> SymbolSpec:
-        return self.__symSpec
-
-    @property
-    def parser(self) -> Parser:
-        return self.__parser
+    pass
 
 
 class Nonterm(Symbol):
@@ -73,9 +55,6 @@ class Nonterm(Symbol):
         def reduceB(self, id):
             "%reduce id"
     """
-
-    def __init__(self, parser: Parser) -> None:
-        Symbol.__init__(self, parser.sym_spec(self), parser)
 
     def merge(self, other: Nonterm) -> Nonterm:
         """
@@ -132,9 +111,6 @@ class Token(Symbol):
 
     class id(Token):
         "%token" """
-
-    def __init__(self, parser: Parser) -> None:
-        Symbol.__init__(self, parser.sym_spec(self), parser)
 
 
 class Precedence:

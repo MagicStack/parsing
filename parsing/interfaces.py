@@ -63,10 +63,6 @@ class Parser(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def sym_spec(self, sym: Symbol) -> SymbolSpec:
-        ...
-
-    @abc.abstractmethod
     def token(self, token: Token) -> None:
         raise NotImplementedError
 
