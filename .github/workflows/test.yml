@@ -3,7 +3,7 @@ name: Tests
 on:
   push:
     branches:
-      - master
+      - main
       - ci
       - "releases/*"
   pull_request:
@@ -23,11 +23,24 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
+
+      - name: Check if release PR.
+        uses: edgedb/action-release/validate-pr@master
+        id: release
+        with:
+          github_token: ${{ secrets.RELEASE_BOT_GITHUB_TOKEN }}
+          missing_version_ok: yes
+          version_file: parsing/_version.py
+          version_line_pattern: |
+            __version__\s*=\s*(?:['"])([[:PEP440:]])(?:['"])
+
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v2
+        if: steps.release.outputs.version == 0
         with:
           python-version: ${{ matrix.python-version }}
       - name: Test
+        if: steps.release.outputs.version == 0
         env:
           PARSING_USE_MYPYC: "${{ matrix.build == 'mypyc' && '1' || '0' }}"
         run: |

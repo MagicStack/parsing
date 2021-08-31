@@ -102,4 +102,4 @@ Additionally, trying to set private attributes may raise:
 
 Author: Jason Evans jasone@canonware.com
 
-Github repo: http://github.com/sprymix/parsing
+Github repo: http://github.com/MagicStack/parsing
