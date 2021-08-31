@@ -76,6 +76,10 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         cibw_python: ["cp37-*", "cp38-*", "cp39-*", "cp310-*"]
         cibw_arch: ["auto64"]
+        exclude:
+          # mypyc seems to be busted on Windows under Python 3.10
+          - os: windows-latest
+            cibw_python: "cp310-*"
 
     defaults:
       run:
