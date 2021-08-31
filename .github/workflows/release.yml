@@ -100,9 +100,9 @@ jobs:
             yum -y install libffi-devel
           CIBW_TEST_EXTRAS: "test"
           CIBW_TEST_COMMAND: >
-            python {project}/tests/__init__.py
+            python {project}/parsing/tests/__init__.py
           CIBW_TEST_COMMAND_WINDOWS: >
-            python {project}\tests\__init__.py
+            python {project}\parsing\tests\__init__.py
 
       - uses: actions/upload-artifact@v2
         with:
