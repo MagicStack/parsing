@@ -280,6 +280,18 @@ class Spec(interfaces.Spec):
     class needs in order to parse input.  Parser generation results in a
     Spec instance, which can then be shared by multiple Parser instances."""
 
+    __deletable__ = [
+        '_itemSets',
+        '_itemSetsHash',
+        '_nonterms',
+        '_precedences',
+        '_productions',
+        '_startSym',
+        '_startProd',
+        '_startState',
+        '_tokens',
+    ]
+
     _sym2spec: dict[type[Symbol], SymbolSpec]
 
     def sym_spec(self, sym: Symbol) -> SymbolSpec:
