@@ -1384,23 +1384,24 @@ class Spec(interfaces.Spec):
             for name in self._nonterms:
                 nonterm = self._nonterms[name]
                 for prod in nonterm.productions:
-                    # Merge epsilon if there is an empty production.
-                    if len(prod.rhs) == 0:
-                        if not nonterm.firstSetMerge(epsilon):
-                            done = False
-
+                    mergeEpsilon = True
                     # Iterate through the RHS and merge the first sets into
                     # this symbol's, until a preceding symbol's first set does
                     # not contain epsilon.
                     for elm in prod.rhs:
-                        containsEpsilon = False
+                        hasEpsilon = False
                         for elmSym in elm.firstSet:
-                            if not nonterm.firstSetMerge(elmSym):
-                                done = False
                             if elmSym == epsilon:
-                                containsEpsilon = True
-                        if not containsEpsilon:
+                                hasEpsilon = True
+                            elif not nonterm.firstSetMerge(elmSym):
+                                done = False
+                        if not hasEpsilon:
+                            mergeEpsilon = False
                             break
+                    # Merge epsilon if it was in the first set of every symbol.
+                    if mergeEpsilon:
+                        if not nonterm.firstSetMerge(epsilon):
+                            done = False
 
     # Compute the follow sets for all symbols.
     def _followSets(self) -> None:
