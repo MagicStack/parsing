@@ -74,12 +74,8 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        cibw_python: ["cp37-*", "cp38-*", "cp39-*", "cp310-*"]
+        cibw_python: ["cp37-*", "cp38-*", "cp39-*", "cp310-*", "cp311-*"]
         cibw_arch: ["auto64"]
-        exclude:
-          # mypyc seems to be busted on Windows under Python 3.10
-          - os: windows-latest
-            cibw_python: "cp310-*"
 
     defaults:
       run:
@@ -94,14 +90,12 @@ jobs:
           fetch-depth: 50
           submodules: true
 
-      - uses: pypa/cibuildwheel@v2.4.0
+      - uses: pypa/cibuildwheel@v2.13.1
         env:
           CIBW_BUILD_VERBOSITY: 1
           CIBW_BUILD: ${{ matrix.cibw_python }}
           CIBW_ARCHS: ${{ matrix.cibw_arch }}
           CIBW_ENVIRONMENT: "PARSING_USE_MYPYC=1"
-          CIBW_BEFORE_ALL_LINUX: >
-            yum -y install libffi-devel
           CIBW_TEST_EXTRAS: "test"
           CIBW_TEST_COMMAND: >
             python {project}/parsing/tests/__init__.py

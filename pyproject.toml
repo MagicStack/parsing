@@ -1,3 +1,9 @@
+[project]
+name = "parsing"
+description = "LR(1) parser generator for Python"
+requires-python = ">=3.7.0"
+dynamic = ["version"]
+
 [build-system]
 requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
@@ -27,7 +33,5 @@ no_implicit_reexport = true
 strict_equality = true
 
 [[tool.mypy.overrides]]
-module = [
-    "parsing.tests.*",
-]
+module = ["parsing.tests.*"]
 ignore_errors = true
