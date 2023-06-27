@@ -38,6 +38,8 @@ from typing import (
     Type,
 )
 
+from mypy_extensions import mypyc_attr
+
 import re
 import sys
 from parsing.ast import Token, Nonterm
@@ -48,6 +50,7 @@ if TYPE_CHECKING:
     import types
 
 
+@mypyc_attr(serializable=True, allow_interpreted_subclasses=True)
 class PrecedenceSpec:
     assoc_tok_re: ClassVar[re.Pattern[str]] = re.compile(
         r"([<>=])([A-Za-z]\w*)"
@@ -83,11 +86,13 @@ class PrecedenceSpec:
         )
 
 
+@mypyc_attr(serializable=True, allow_interpreted_subclasses=True)
 class PrecedenceRef(PrecedenceSpec):
     def __init__(self, name: str) -> None:
         super().__init__(name, "fail", {})
 
 
+@mypyc_attr(serializable=True, allow_interpreted_subclasses=True)
 class SymbolSpec:
     name: str
     prec: PrecedenceSpec
@@ -122,6 +127,7 @@ class SymbolSpec:
         return ret
 
 
+@mypyc_attr(serializable=True, allow_interpreted_subclasses=True)
 class NontermSpec(SymbolSpec):
     token_re: ClassVar[re.Pattern[str]] = re.compile(r"([A-Za-z]\w*)")
     precedence_tok_re: ClassVar[re.Pattern[str]] = re.compile(
@@ -193,6 +199,7 @@ class NontermSpec(SymbolSpec):
 
 
 # AKA terminal symbol.
+@mypyc_attr(serializable=True, allow_interpreted_subclasses=True)
 class TokenSpec(SymbolSpec):
     def __init__(
         self,
@@ -204,6 +211,7 @@ class TokenSpec(SymbolSpec):
         self.tokenType = tokenType
 
 
+@mypyc_attr(serializable=True, allow_interpreted_subclasses=True)
 class Item:
     production: Production
     dotPos: int
@@ -260,6 +268,7 @@ class Item:
 _item_cache: dict[tuple[Production, int], Item] = {}
 
 
+@mypyc_attr(serializable=True, allow_interpreted_subclasses=True)
 class Production:
     def __init__(
         self,
@@ -347,6 +356,7 @@ class NontermStart(Nonterm):
         pass
 
 
+@mypyc_attr(serializable=True, allow_interpreted_subclasses=True)
 class Action:
     """
     Abstract base class, subclassed by {Shift,Reduce}Action."""
