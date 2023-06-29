@@ -7,7 +7,10 @@ constructed in the process.
 
 from __future__ import annotations
 
+from mypy_extensions import mypyc_attr
 
+
+@mypyc_attr(serializable=True, allow_interpreted_subclasses=True)
 class Symbol:
     pass
 

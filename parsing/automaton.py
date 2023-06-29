@@ -15,6 +15,7 @@ from typing import (
     Tuple,
     Type,
 )
+from mypy_extensions import mypyc_attr
 
 import collections
 import inspect
@@ -97,6 +98,7 @@ def computeFirstSet(s: Tuple[SymbolSpec, ...]) -> frozenset[SymbolSpec]:
     return firstSet
 
 
+@mypyc_attr(serializable=True, allow_interpreted_subclasses=True)
 class ItemSet:
     def __init__(self, items: Iterable[Tuple[Item, set[SymbolSpec]]]) -> None:
         self._kernel: Dict[Item, set[SymbolSpec]] = {}
@@ -216,9 +218,9 @@ class ItemSet:
     def goto(self, sym: SymbolSpec) -> ItemSet | None:
         items = self._symMap.get(sym)
         if items:
-            return ItemSet(
+            return ItemSet([
                 (i.production.item(i.dotPos + 1), self._all[i]) for i in items
-            )
+            ])
         else:
             return None
 
@@ -274,6 +276,7 @@ class ItemSet:
         return True
 
 
+@mypyc_attr(serializable=True, allow_interpreted_subclasses=True)
 class Spec(interfaces.Spec):
     """
     The Spec class contains the read-only data structures that the Parser

@@ -27,7 +27,7 @@ with open(str(_ROOT / "parsing" / "_version.py")) as f:
 
 
 USE_MYPYC = False
-MYPY_DEPENDENCY = "mypy>=0.910"
+MYPY_DEPENDENCY = "mypy>=1.4.1"
 setup_requires = []
 ext_modules = []
 
