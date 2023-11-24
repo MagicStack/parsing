@@ -26,7 +26,7 @@ class Lr(Parser):
 
     def __init__(self, spec: Spec) -> None:
         if __debug__:
-            if type(self) == Lr:
+            if type(self) is Lr:
                 assert spec.pureLR
         assert spec.conflicts == 0
         self._spec = spec
@@ -86,11 +86,11 @@ class Lr(Parser):
 
             if self.verbose:
                 print("   --> %r" % action)
-            if type(action) == ShiftAction:
+            if type(action) is ShiftAction:
                 self._stack.append((sym, action.nextState))
                 break
             else:
-                assert type(action) == ReduceAction
+                assert type(action) is ReduceAction
                 self._reduce(action.production)
 
             if self.verbose:

@@ -181,7 +181,7 @@ class Glr(Lr):
                 self._gss.pop(i)
             else:
                 for action in self._action[top.nextState][symSpec]:
-                    if type(action) == ReduceAction:
+                    if type(action) is ReduceAction:
                         if len(action.production.rhs) == 0:
                             if action.production not in epsilons:
                                 assert (
@@ -324,7 +324,7 @@ class Glr(Lr):
         for top in self._gss:
             if symSpec in self._action[top.nextState]:
                 for action in self._action[top.nextState][symSpec]:
-                    if type(action) == ReduceAction:
+                    if type(action) is ReduceAction:
                         if len(action.production.rhs) == 0:
                             if (
                                 gotos[top.nextState][action.production.lhs]
@@ -377,7 +377,7 @@ class Glr(Lr):
         for topA in prevGss:
             if symSpec in self._action[topA.nextState]:
                 for action in self._action[topA.nextState][symSpec]:
-                    if type(action) == ShiftAction:
+                    if type(action) is ShiftAction:
                         merged = False
                         for topB in self._gss:
                             if topB.nextState == topA.nextState:
