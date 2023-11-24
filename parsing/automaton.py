@@ -158,7 +158,7 @@ class ItemSet:
         return self._hash
 
     def __eq__(self, other: Any) -> bool:
-        if type(other) == ItemSet:
+        if type(other) is ItemSet:
             return self._kernel.keys() == other._kernel.keys()
         else:
             return NotImplemented
@@ -589,7 +589,7 @@ class Spec(interfaces.Spec):
                                 conflict = "XXX"
                                 break
 
-                    if type(action) == ShiftAction:
+                    if type(action) is ShiftAction:
                         lines.append(
                             "%s %15r : %-6s %d [%s]"
                             % (
@@ -601,7 +601,7 @@ class Spec(interfaces.Spec):
                             )
                         )
                     else:
-                        assert type(action) == ReduceAction
+                        assert type(action) is ReduceAction
                         lines.append(
                             "%s %15r : %-6s %r"
                             % (conflict, sym, "reduce", action.production)
@@ -1715,16 +1715,16 @@ class Spec(interfaces.Spec):
     ) -> ConflictResolution:
         ret: ConflictResolution
 
-        if type(oldAct) == ShiftAction:
+        if type(oldAct) is ShiftAction:
             oldPrec = sym.prec
-        elif type(oldAct) == ReduceAction:
+        elif type(oldAct) is ReduceAction:
             oldPrec = oldAct.production.prec
         else:
             assert False
 
-        if type(newAct) == ShiftAction:
+        if type(newAct) is ShiftAction:
             newPrec = sym.prec
-        elif type(newAct) == ReduceAction:
+        elif type(newAct) is ReduceAction:
             newPrec = newAct.production.prec
         else:
             assert False
@@ -1740,9 +1740,9 @@ class Spec(interfaces.Spec):
 
             if oldPrec.assoc == "split" or newPrec.assoc == "split":
                 ret = "both"
-            elif type(newAct) == type(oldAct):
-                assert type(newAct) == ReduceAction
-                assert type(oldAct) == ReduceAction
+            elif type(newAct) is type(oldAct):
+                assert type(newAct) is ReduceAction
+                assert type(oldAct) is ReduceAction
                 # Fatal reduce/reduce conflict.
                 ret = "err"
             else:
@@ -1765,16 +1765,16 @@ class Spec(interfaces.Spec):
                     if assoc == "fail":
                         ret = "err"
                     elif assoc == "left":
-                        if type(oldAct) == ShiftAction:
+                        if type(oldAct) is ShiftAction:
                             ret = "new"
                         else:
-                            assert type(newAct) == ShiftAction
+                            assert type(newAct) is ShiftAction
                             ret = "old"
                     elif assoc == "right":
-                        if type(oldAct) == ShiftAction:
+                        if type(oldAct) is ShiftAction:
                             ret = "old"
                         else:
-                            assert type(newAct) == ShiftAction
+                            assert type(newAct) is ShiftAction
                             ret = "new"
                     elif assoc == "nonassoc":
                         ret = "neither"
