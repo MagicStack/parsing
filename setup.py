@@ -96,5 +96,6 @@ setup(
             MYPY_DEPENDENCY,
         ]
     },
+    install_requires=["mypy-extensions>=1.0.0"],
     cmdclass={"build_ext": build_ext},
 )
