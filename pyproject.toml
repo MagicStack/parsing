@@ -1,8 +1,20 @@
 [project]
 name = "parsing"
-description = "LR(1) parser generator for Python"
+description = "LR(1) parser generator for Python and CFSM and GLR parser drivers"
 requires-python = ">=3.7.0"
-dynamic = ["version"]
+dynamic = ["version", "dependencies", "optional-dependencies"]
+license = { file = "LICENSE" }
+authors = [{ name = "Jason Evans", email = "jasone@canonware.com" }]
+readme = { file = "README.rst", content-type = "text/x-rst" }
+classifiers = [
+    'Development Status :: 5 - Production/Stable',
+    'Intended Audience :: Developers',
+    'License :: OSI Approved :: MIT License',
+    'Operating System :: OS Independent',
+    'Programming Language :: Python :: 3',
+    'Topic :: Software Development :: Compilers',
+    'Topic :: Text Processing :: General',
+]
 
 [build-system]
 requires = ["setuptools>=42", "wheel"]

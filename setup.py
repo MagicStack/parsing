@@ -10,10 +10,6 @@ from setuptools.command import build_ext as setuptools_build_ext
 _ROOT = pathlib.Path(__file__).parent
 
 
-with open(str(_ROOT / "README.rst")) as f:
-    readme = f.read()
-
-
 with open(str(_ROOT / "parsing" / "_version.py")) as f:
     for line in f:
         if line.startswith("__version__ ="):
@@ -88,26 +84,8 @@ class build_ext(setuptools_build_ext.build_ext):  # type: ignore
 
 
 setup(
-    name="parsing",
     version=VERSION,
     python_requires=">=3.7.0",
-    url="http://www.canonware.com/Parsing/",
-    license="MIT",
-    author="Jason Evans",
-    author_email="jasone@canonware.com",
-    description="A pure-Python module that implements an LR(1) "
-    "parser generator, as well as CFSM and GLR parser drivers.",
-    long_description=readme,
-    long_description_content_type="text/x-rst",
-    classifiers=[
-        "Development Status :: 5 - Production/Stable",
-        "Intended Audience :: Developers",
-        "License :: OSI Approved :: MIT License",
-        "Operating System :: OS Independent",
-        "Programming Language :: Python :: 3",
-        "Topic :: Software Development :: Compilers",
-        "Topic :: Text Processing :: General",
-    ],
     packages=["parsing", "parsing.tests", "parsing.tests.specs"],
     package_data={"parsing": ["py.typed"]},
     setup_requires=setup_requires,
