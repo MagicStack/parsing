@@ -127,7 +127,7 @@ class Glr(Lr):
         tokenSpec = self._spec.sym_spec(token)
         self._act(token, tokenSpec)  # type: ignore
         if len(self._gss) == 0:
-            raise UnexpectedToken("Unexpected token: %r" % token)
+            raise UnexpectedToken(f"Unexpected token: {token:r}")
 
     def eoi(self) -> None:
         """
@@ -141,7 +141,7 @@ class Glr(Lr):
             for path in top.paths():
                 assert len(path) == 5
                 if self.verbose:
-                    print("   --> accept %r" % path)
+                    print(f"   --> accept {path:r}")
                 edge = path[1]
                 assert isinstance(edge, Gsse)
                 assert isinstance(edge.value, Nonterm)
