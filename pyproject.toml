@@ -2,8 +2,8 @@
 name = "parsing"
 description = "LR(1) parser generator for Python and CFSM and GLR parser drivers"
 requires-python = ">=3.7.0"
-dynamic = ["version"]
-license = { file = "" }
+dynamic = ["version", "dependencies", "optional-dependencies"]
+license = { file = "LICENSE" }
 authors = [{ name = "Jason Evans", email = "jasone@canonware.com" }]
 readme = { file = "README.rst", content-type = "text/x-rst" }
 classifiers = [
@@ -15,10 +15,6 @@ classifiers = [
     'Topic :: Software Development :: Compilers',
     'Topic :: Text Processing :: General',
 ]
-dependencies = ['mypy-extensions>=1.0.0']
-
-[project.optional-dependencies]
-test = ['flake8', 'mypy>=1.4.1']
 
 [build-system]
 requires = ["setuptools>=42", "wheel"]
